@@ -1,0 +1,5 @@
+name = osg_api
+description = Chuck's Common module functions and tools
+package = Chuck Sharpe - Custom Mods
+core = 7.x
+files[] = osg_api.test

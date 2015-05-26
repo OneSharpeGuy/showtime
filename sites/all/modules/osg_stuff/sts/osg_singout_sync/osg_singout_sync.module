@@ -1,0 +1,698 @@
+<?php
+
+require_once 'osg_singout_parse_calendar.inc';
+/**
+ * Implements hook_help().
+ */
+function osg_singout_sync_help($path, $arg)
+{
+    switch ($path)
+    {
+            // Main module help for the block module
+        case 'admin/help#block':
+            return '<p>' . t('Blocks are boxes of content rendered into an area, or region, of a web page. The default theme Bartik, for example, implements the regions "Sidebar first", "Sidebar second", "Featured", "Content", "Header", "Footer", etc., and a block may appear in any one of these areas. The <a href="@blocks">blocks administration page</a> provides a drag-and-drop interface for assigning a block to a region, and for controlling the order of blocks within regions.',
+                array('@blocks' => url('admin/structure/block'))) . '</p>';
+
+            // Help for another path in the block module
+        case 'admin/structure/block':
+            return '<p>' . t('This page provides a drag-and-drop interface for assigning a block to a region, and for controlling the order of blocks within regions. Since not all themes implement the same regions, or display regions in the same way, blocks are positioned on a per-theme basis. Remember that your changes will not be saved until you click the <em>Save blocks</em> button at the bottom of the page.') .
+                '</p>';
+    }
+}
+
+/**
+ * Implements hook_menu().
+ */
+function osg_singout_sync_menu()
+{
+
+    $items = array();
+
+    // $items['admin / config / content / osg_singout_sync'] = array(
+    // 'title' => 'STS Sing - out Sync',
+    // 'description' => 'Creates Uniform Sing - out nodes and keeps nodes in sync with Google Calendar',
+    // 'page callback' => 'drupal_get_form',
+    // 'page arguments' => array('osg_singout_sync_form'),
+    // 'access arguments' => array('access administration pages'),
+    // 'type' => MENU_NORMAL_ITEM,
+    // );
+    $items['osg/singout/alt/sync/%/%'] = array(
+        'title' => 'Alt Calendar Import Page',
+        'page callback' => 'osg_singout_sync_alt_sync',
+        'page arguments' => array(4, 5),
+        'access arguments' => true,
+        'access callback' => true,
+        'type' => MENU_CALLBACK,
+        );
+    $items['osg/singout/sync'] = array(
+        'title' => 'Calendar Import Page',
+        'page callback' => 'osg_singout_sync_google_sync',
+        'access arguments' => true,
+        'access callback' => true,
+        'type' => MENU_CALLBACK,
+        );
+
+    $items['admin/config/osg/singout/osg_singout_sync'] = array(
+        'title' => 'STS Sing-out Sync',
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('osg_singout_sync_form'),
+        'access callback' => true,
+        );
+    $items['osg/singout/osg/sync/user/autocomplete'] = array(
+        'title' => '',
+        'page callback' => 'osg_singout_sync_autocomplete',
+        'access callback' => true,
+        'access arguments' => array('autocomplete'),
+        'type' => MENU_CALLBACK,
+        );
+    return $items;
+}
+
+function osg_singout_sync_page()
+{
+    $page = array(
+        '#type' => 'markup',
+        '#markup' => t('Provide a block with a button to initiate Calendar Sync.',
+            array('@url' => url('admin/structure/block'))),
+        );
+    return $page;
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function osg_singout_sync_block_view($delta = '')
+{
+    // This example is adapted from node.module.
+    $block = array();
+
+    switch ($delta)
+    {
+        case 'osg_singout_sync_import':
+            $block['subject'] = t('Google Calendar Sync');
+            $block['content'] = array();
+            break;
+        case 'osg_singout_sync_listing':
+            $block['subject'] = t('ShowTime Performances');
+            $block['content'] = osg_singout_sync_contents($delta);
+            break;
+
+
+    }
+    return $block;
+}
+/**
+
+
+ * /*
+ * Implements hook_form_FORM_ID_alter()
+ *
+ * @param undefined $form
+ * @param undefined $form_state
+ * @param undefined $form_id
+ *
+ */
+function osg_singout_sync_form_singout_node_form_alter(&$form, &$form_state, $form_id)
+{
+    //drupal_set_message('osg_singout_sync_form_singout_node_form_alter');
+    # Note that form validation functions are specified in the '#validate' component of the
+    # form array (the value of $form['#validate'] is an array of validation function names).
+    # If the form does not originate in your module, you can implement hook_form_FORM_ID_alter()
+    # to add a validation function to $form['#validate'].
+
+    //$form['field_location']['#element_validate'] = array('osg_singout_sync_sync_google_map');
+    $form['body']['#type'] = 'hidden';
+    $form['note'] = array(
+        '#type' => 'markup',
+        '#markup' =>
+            "<h3>Note:<p>All values (except for <i>Title</i> and <i>Lead Time</i>.) will be overwritten when Performance nodes are syncronized with Google Calendar</h2></red></p>",
+        '#weight' => -500,
+        );
+    //$form['field_icaluid']['#type'] = 'hidden';
+    //$form['actions']['submit']['#validate'][] = 'osg_singout_sync_embed_google_map';
+    //$form['#validate'][] = 'osg_singout_sync_validate';
+    //debug($form_state['build_info']);
+    //debug($form['body']);
+    //debug($form,'Whole fing form',true);
+    $form['field_available']['#type'] = 'hidden';
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+
+function osg_singout_sync_sync_google_map($element, &$form_state)
+{
+    //drupal_set_message('osg_singout_sync_sync_google_map');
+    //debug($element, '$element', true);
+    $location = $form_state['values']['field_location']['und'][0]['value'];
+    //debug($location);
+
+    $form_state['values']['field_google_map'] = array('und' => array(0 => array
+                (
+                'value' => osg_singout_sync_map_location($location),
+                'summary' => '',
+                'format' => 'full_html',
+                ), ), );
+
+}
+
+function osg_singout_sync_map_location($street_address)
+{
+    //todo: Add Map Width / Height function to Configuration form
+    if ($street_address == "N/A")
+    {
+        return "";
+    }
+
+    $street_address = str_replace(' ', '+', $street_address);
+    $zoom = variable_get('osg_singout_sync_zoom', 15);
+    $blurb[] = '<p><iframe ';
+    $blurb[] = 'width = "425" ';
+    $blurb[] = 'height = "350" ';
+    $blurb[] = 'frameborder = "0" ';
+    $blurb[] = 'scrolling = "no" ';
+    $blurb[] = 'marginheight = "0" ';
+    $blurb[] = 'marginwidth = "0" ';
+    $blurb[] = 'src = "https://maps.google.com/maps';
+    $blurb[] = '?oe=utf-8&amp;client=firefox-a';
+    $blurb[] = '&amp;q=';
+    $blurb[] = '';
+    $blurb[] = '&amp;ie=UTF8';
+    $blurb[] = '&amp;hq=';
+    $blurb[] = '&amp;hnear=';
+    $blurb[] = '';
+    $blurb[] = '&amp;gl=us';
+    $blurb[] = '&amp;t=m';
+    $blurb[] = "&amp;z = $zoom";
+    $blurb[] = '&amp;iwloc=A';
+    $blurb[] = '&amp;output=embed">';
+    $blurb[] = '</iframe > ';
+    $blurb[] = '<br/>';
+    $blurb[] = '<small > ';
+    $blurb[] = '<a href = "https://maps.google.com/maps';
+    $blurb[] = '?oe=utf-8';
+    $blurb[] = '&amp;client=firefox-a';
+    $blurb[] = '&amp;q=';
+    $blurb[] = '';
+    $blurb[] = '&amp;ie=UTF8';
+    $blurb[] = '&amp;hq=';
+    $blurb[] = '&amp;hnear=';
+    $blurb[] = '';
+    $blurb[] = '&amp;gl=us';
+    $blurb[] = '&amp;t=m';
+    $blurb[] = "&amp;z = $zoom & amp;iwloc = A";
+    $blurb[] = '&amp;source=embed" ';
+    $blurb[] = 'style = "color:#0000FF;text-align:left" target = "_blank">View Larger Map</a > ';
+    $blurb[] = '</small > ';
+    foreach ($blurb as $key => $value)
+    {
+        if ($value == '')
+        {
+            $blurb[$key] = $street_address;
+        }
+    }
+    //debug($blurb);
+    $snippit = implode($blurb);
+    //debug($snippit);
+    return $snippit;
+}
+
+/**
+ * Builds the node body from
+ * @param undefined $node
+ *
+ */
+
+function osg_singout_sync_build_body(&$node, $event = null)
+{
+    $start_time_label = 'Start Time';
+    $derrived_time_label = '';
+    $date_label = 'Date';
+    //debug($_SESSION['osg_singout_sync_calendar']);
+    if (isset($_SESSION['osg_singout_sync_calendar']))
+    {
+        foreach ($_SESSION['osg_singout_sync_calendar'] as $key => $value)
+        {
+            $$key = $value;
+        }
+    }
+    $title = "";
+    $venue = osg_api_get_flat_field('node', $node, 'field_venue');
+    if (property_exists($node, "title"))
+    {
+        $title = $node->title;
+    }
+    if ($title <> $venue)
+    {
+        $lines[] = '<span class = "singout-venue"><b > ' . $venue .
+            '</span><br > ';
+    }
+
+    $location = osg_api_get_flat_field('node', $node, 'field_location');
+
+    if (trim(strtoupper($location)) == "N/A")
+    {
+        $hide_location = ' style = "display:none;"';
+    }
+    else
+    {
+        $hide_location = "";
+
+    }
+
+    $lines[] = "<span class=\"singout-location\"$hide_location>" . $location .
+        '</span><br > ';
+    //$lines[] = "";
+    $udate = osg_api_get_flat_field('node', $node, 'field_when');
+    if (!is_null($event))
+    {
+        $zone = $event['time_zone'];
+    }
+    else
+    {
+        $value = field_get_items('node', $node, 'field_when');
+        $zone = $value[0]['timezone'];
+    }
+    date_default_timezone_set($zone);
+    $lines[$date_label] = date('l, F j, Y', $udate);
+    $lead_time = osg_api_get_flat_field('node', $node, 'field_lead_time') * 60;
+    //debug($lead_time);
+    if (!is_numeric($lead_time))
+    {
+        $lead_time = 3600;
+    }
+    //If lead time is less than 5 minutes, assume its an error
+    if ($lead_time <= 300)
+    {
+        $lead_time = 3600;
+    }
+    //$lines[] = "";
+
+    $lines[] = '<table class = "singout-timings"><td > ';
+    if ($derrived_time_label > '')
+    {
+        $lines[$derrived_time_label] = date('g:i a', ($udate - $lead_time));
+        $lines[] = '</td><td > ';
+    }
+    $lines[$start_time_label] = date('g:i a', $udate);
+    $lines[] = '</td></table > ';
+    $description = osg_api_get_flat_field('node', $node, 'field_description');
+    if ($description)
+    {
+        $lines[] = $description;
+    }
+    //debug($lines);
+    $body = '';
+    foreach ($lines as $key => $value)
+    {
+        if (is_numeric($key))
+        {
+            $caption = '';
+        }
+        else
+        {
+            $caption = '<span class = "singout-label">' . str_replace(' ',
+                '&nbsp;', $key) . ':</span > ';
+        }
+        $body = $body . $caption . $value;
+        if ($value == "")
+        {
+            $body . '<br > ';
+        }
+    }
+    $teaser = $body;
+    if (trim($location) == "")
+    {
+        $body = $body .
+            "<h3>The Location for this event has not yet been specified</h3>";
+    }
+    else
+    {
+
+        $body = $body . "<!--break-->";
+        $body = $body . osg_singout_sync_map_location(osg_api_coalesce($location,
+            $title, $venue));
+
+    }
+
+    //debug($body);
+    $body = array(
+        'value' => $body,
+        'format' => 'full_html',
+        );
+    $node->body = osg_api_push_fat_value($body);
+    return $body;
+
+}
+
+/**
+ *
+ * Implements hook_node_submit()
+ *
+ * Act on a node after validated form values have been copied to it.
+ *
+ * This hook is invoked when a node form is submitted with either the "Save" or
+ * "Preview" button, after form values have been copied to the form state's node
+ * object, but before the node is saved or previewed. It is a chance for modules
+ * to adjust the node's properties from what they are simply after a copy from
+ * $form_state['values']. This hook is intended for adjusting non-field-related
+ * properties. See hook_field_attach_submit() for customizing field-related
+ * properties.
+ *
+ * @param $node
+ *   The node object being updated in response to a form submission.
+ * @param $form
+ *   The form being used to edit the node.
+ * @param $form_state
+ *   The form state array.
+ *
+ * @ingroup node_api_hooks
+ */
+function osg_singout_sync_node_submit($node, $form, &$form_state)
+{
+
+
+    if ($node->type == "singout")
+    {
+        //drupal_set_message('osg_singout_sync_node_submit');
+        //debug($form_state['values'],'form_state',true);
+        //I need the updated Venue, Location and Lead time to build the node
+        $node->field_venue = $form_state['values']['field_venue'];
+        $node->field_location = $form_state['values']['field_location'];
+        $node->field_lead_time = $form_state['values']['field_lead_time'];
+
+        //$my_node = $node;
+        $url = db_select('osg_ical_imported', 'i')->fields('i', array('calendar_url'))->
+            condition('nid', $node->nid)->execute()->fetchField();
+        $calendars = variable_get('osg_singout_sync_calendar', array());
+        foreach ($calendars as $info)
+        {
+            if ($info['url'] == $url)
+            {
+                $_SESSION['osg_singout_sync_calendar'] = $info;
+                break;
+            }
+
+        }
+        osg_singout_sync_build_body($node);
+    }
+}
+function osg_singout_sync_google_sync($parse_only = false, $options = array())
+{
+    osg_singout_sync_parse_calendar_feed($options);
+    osg_singout_sync_enabler();
+    osg_singout_sync_disable_unseen();
+    node_access_rebuild();
+    if (!$parse_only)
+    {
+        drupal_goto('gigs');
+    }
+
+}
+function osg_singout_sync_sync_now_pressed()
+{
+
+    osg_singout_sync_google_sync(true);
+
+}
+/**
+ * The form to provide a link to cron.php.
+ */
+require_once 'osg_singout_sync_form.inc';
+
+function osg_singout_sync_cron()
+{
+    $interval = variable_get('osg_singout_sync_interval', 300);
+    if ((!is_null($interval)) && is_numeric($interval) && ($interval > 0))
+    {
+        drupal_set_message('osg_singout_sync_cron');
+        // We usually don't want to act every time cron runs (which could be every
+        // minute) so keep a time for the next run in a variable.
+        //variable_del('osg_singout_sync_next_execution');
+        $next_exec = (int)variable_get('osg_singout_sync_next_execution', 0);
+        if (time() >= $next_exec)
+        {
+
+            osg_singout_sync_parse_calendar_feed();
+            osg_singout_sync_enabler();
+            osg_singout_sync_disable_unseen();
+            node_access_rebuild();
+            variable_set('osg_singout_sync_next_execution', time() + $interval);
+        }
+        else
+        {
+            $message = 'Next execution ' . $next_exec . ' Time Now ' . time() .
+                ' ' . (string )($next_exec - time());
+            debug($message);
+
+        }
+    }
+}
+/*
+function osg_singout_sync_init() {
+
+global $user;
+
+
+// Redirect users from node/%/register to register/%/edit
+if ($user->uid && arg(2) == 'register' && arg(0) == 'node') {
+$nid = arg(1);
+$node = node_load(arg(1));
+if ($node && $node->field_registration_type['und'][0]['registration_type'] == 'singout') {
+
+$registrations = registration_load_multiple(false, array('type' => 'singout', 'author_uid' => $user->uid, 'user_uid' => $user->uid, 'entity_id' => $nid));
+
+foreach ($registrations as $key => $registration) {
+if ($registration->registration_id > 0) {
+drupal_set_message(t('You are already registered. You may update your registration below.'));
+header("Location: /registration/" . $registration->registration_id . '/edit?destination=node/'.$nid);
+exit();
+}
+}
+}
+}
+// End register redirect
+
+}
+*/
+function osg_singout_sync_form_singout_additonal_action($form, &$form_state)
+{
+    variable_set('osg_singout_sync_next_execution', time() + $form_state['values']['osg_singout_sync_interval']);
+
+}
+function osg_singout_sync_autocomplete($string)
+{
+    $matches = array();
+    // Anonymous user goes first to be visible for user.
+    $anonymous = variable_get('anonymous', t('Anonymous'));
+    if (stripos($anonymous, $string) === 0)
+    {
+        $matches[$anonymous] = $anonymous;
+    }
+    // Other suggestions.
+    $result = db_query_range("SELECT name FROM {users} WHERE LOWER(name) LIKE LOWER(:string)",
+        0, 10, array(':string' => $string . '%', ));
+    foreach ($result as $user)
+    {
+        $matches[$user->name] = check_plain($user->name);
+    }
+    if (module_exists('devel'))
+    {
+        $GLOBALS['devel_shutdown'] = false;
+    }
+    drupal_json_output($matches);
+}
+/**
+ * Check all singout nodes
+ * Publish nodes within the next target number of days
+ * Unpublish nodes beyond taget days
+ * Promot nodes with target days to front page
+ *
+ * @param undefined $params
+ *
+ */
+function osg_singout_sync_enabler()
+{
+
+    $span = osg_singout_sync_availability();
+    //debug($span);
+    /*
+    $sql       = "UPDATE node n ";
+    $sql       = $sql . "INNER JOIN field_data_field_when w ON w.entity_id=n.nid AND w.entity_type='node' ";
+    //$sql = $sql ."SET `status` = 1 ";
+    //$sql = $sql ."WHERE `status` = 0 AND ((field_when_value - UNIX_TIMESTAMP()) < $publish)";
+    $sql       = $sql . "INNER JOIN field_data_field_available a ON n.nid=a.entity_id AND a.entity_type='node' ";
+    $sql       = $sql . "SET a.field_available_value=1 ";
+
+    //$sql = $sql ."WHERE ((field_when_value - UNIX_TIMESTAMP()) < $publish)";
+    $sql       = $sql . "WHERE field_when_value BETWEEN " . $span['start'] . " AND " .
+    $span['end'];
+    //debug($sql);
+    // Field Available no longer exists
+    //db_query($sql);
+    $sql       = "UPDATE node n ";
+    $sql       = $sql . "INNER JOIN field_data_field_when w ON w.entity_id=n.nid AND w.entity_type='node' ";
+    // $sql = $sql ."SET `status` = 0 ";
+    //$sql = $sql ."WHERE `status` = 1 AND ((field_when_value - UNIX_TIMESTAMP()) > $publish)";
+    $sql       = $sql . "INNER JOIN field_data_field_available a ON n.nid=a.entity_id AND a.entity_type='node' ";
+    $sql       = $sql . "SET a.field_available_value=0 ";
+
+    //$sql = $sql ."WHERE ((field_when_value - UNIX_TIMESTAMP()) > $publish)";
+    $sql       = $sql . "WHERE field_when_value NOT BETWEEN " . $span['start'] .
+    " AND " . $span['end'];
+    //debug($sql);
+    //db_query($sql);
+    */
+    $unpublish = $span['start']; //variable_get('osg_singout_sync_unpublish', - 1) * 86400;
+    $sql = "UPDATE node n ";
+    $sql = $sql . "INNER JOIN field_data_field_when w ON w.entity_id=n.nid AND w.entity_type='node' ";
+    $sql = $sql . "SET `status`=0 ";
+    $sql = $sql . "WHERE (field_when_value-UNIX_TIMESTAMP())<$unpublish";
+    //debug($sql);
+
+    db_query($sql);
+
+    $sql = "UPDATE node n ";
+    $sql = $sql . "INNER JOIN field_data_field_when w ON w.entity_id=n.nid AND w.entity_type='node' ";
+    $sql = $sql . "SET `status`=1 ";
+    $sql = $sql . "WHERE field_when_value >" . $span['start'];
+    //debug($sql);
+
+    db_query($sql);
+    $promote = $span['promote']; // variable_get('osg_singout_sync_promote', 7) * 86400;
+    $sql = "UPDATE node n ";
+    $sql = $sql . "INNER JOIN field_data_field_when w ON w.entity_id=n.nid ";
+    $sql = $sql . "AND w.entity_type='node' ";
+    $sql = $sql . "AND n.promote=0 ";
+    $sql = $sql . "AND (field_when_value BETWEEN " . $span['start'] . " and " .
+        $span['promote'] . ") ";
+    $sql = $sql . "AND n.`status`=1 ";
+    $sql = $sql . "SET n.promote=1 ";
+    //drupal_set_message($sql);
+    db_query($sql);
+    $sql = "UPDATE node n ";
+    $sql = $sql . "INNER JOIN node_revision r ON n.nid=r.nid AND n.vid=r.vid ";
+    $sql = $sql . "SET r.`status`=n.`status` ";
+    $sql = $sql . "WHERE n.`status`<>r.`status` ";
+    db_query($sql);
+
+    $sql = "UPDATE node_revision r ";
+    $sql = $sql . "INNER JOIN node n ON n.nid=r.nid AND n.vid=r.vid ";
+    $sql = $sql . "SET r.promote=n.promote ";
+    $sql = $sql . "WHERE n.promote<>r.promote ";
+    db_query($sql);
+
+}
+function osg_singout_sync_alt_sync($key, $value)
+{
+    osg_singout_sync_google_sync(false, array($key => $value));
+}
+/**
+ * When singout node is deleted, cleanup the osg_ical_import table
+ * @param undefined $node
+ *
+ */
+function osg_singout_sync_node_delete($node)
+{
+    if ($node->type == 'singout')
+    {
+        $record = db_select('osg_ical_imported', 'c')->condition('nid', $node->
+            nid)->fields('c')->execute()->fetchAssoc();
+
+        debug($record);
+        if ($record)
+        {
+
+            $query = db_insert('osg_ical_log')->fields(array(
+                'unique_id' => $record['unique_id'],
+                'session_uuid' => $record['session_uuid'],
+                'message' => 'associated node (' . $node->nid . ') deleted',
+                ));
+            //print $query->__toString();
+            $query->execute();
+
+            db_delete('osg_ical_imported')->condition('nid', $node->nid)->
+                execute();
+
+        }
+    }
+}
+
+/**
+ *
+ * Implements hook_node_presave()
+ *
+ * Act on a node being inserted or updated.
+ *
+ * This hook is invoked from node_save() before the node is saved to the
+ * database.
+ *
+ * @param $node
+ *   The node that is being inserted or updated.
+ *
+ * @ingroup node_api_hooks
+ */
+function osg_singout_sync_node_presave($node)
+{
+    return;
+    $my_node = $node;
+
+    $url = db_select('osg_ical_imported', 'i')->fields('i', array('calendar_url'))->
+        condition('nid', $my_node->nid)->execute()->fetchField();
+    $calendars = variable_get('osg_singout_sync_calendar', array());
+    foreach ($calendars as $info)
+    {
+        if ($info['url'] == $url)
+        {
+            $_SESSION['osg_singout_sync_calendar'] = $info;
+            break;
+        }
+
+    }
+    $node->body = osg_singout_sync_build_body($my_node);
+    //debug(variable_get('osg_singout_sync_calendar'));
+    //drupal_set_message('osg_osg_singout_sync_node_presave');
+}
+/**
+ * determines if node is visible
+ * dependant on user roles and calendar visibility
+ *
+ * */
+function osg_singout_sync_hide_node($nid)
+{
+    global $user;
+
+    if (empty($_SESSION['osg']['singout_sync']['calendar']['visibility']))
+    {
+        $config = variable_get('osg_singout_sync_calendar', array());
+        $visibility = array();
+        foreach ($config as $item)
+        {
+            $visibility[$item['url']] = array_filter($item['roles']);
+        }
+        $_SESSION['osg']['singout_sync']['calendar']['visibility'] = $visibility;
+    }
+    if (empty($_SESSION['osg']['ical_imported']['events']))
+    {
+        $events = db_select('osg_ical_imported', 'i')->fields('i', array('nid',
+                'calendar_url'))->condition('available', 1)->execute()->
+            fetchAllKeyed();
+        $_SESSION['osg']['ical_imported']['events'] = $events;
+
+    }
+
+    $hide_node = false;
+    if (!empty($_SESSION['osg']['ical_imported']['events'][$nid]))
+    {
+        $event_url = $_SESSION['osg']['ical_imported']['events'][$nid];
+
+
+        $calendar_roles = $_SESSION['osg']['singout_sync']['calendar']['visibility'][$event_url];
+        $hits = array_intersect($user->roles, $calendar_roles);
+
+        $hide_node = (count($hits) == 0);
+    }
+    return $hide_node;
+
+}

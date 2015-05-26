@@ -1,0 +1,4 @@
+name = Roster Helper Function
+description = Helper function for roster export
+package = Chuck Sharpe - Custom Mods
+core = 7.x

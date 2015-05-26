@@ -1,0 +1,51 @@
+<?php
+
+/**
+* @file
+* Module file for osg_singout_menu.
+*/
+
+/**
+* @defgroup osg_singout_menu Example: Menu
+* @ingroup examples
+* @{
+* Demonstrates uses of the Menu APIs in Drupal.
+*
+* The Page Example module also talks about the menu system, as well
+* as how to use menu arguments to generate pages.
+*
+* @see hook_menu()
+* @see hook_menu_alter()
+* @see hook_menu_link_alter()
+* @see page_example
+* @see page_example_menu()
+*/
+
+/**
+* Implements hook_menu().
+*/
+function osg_singout_menu_menu() {
+
+
+    $items['admin/config/osg/singout'] = array(
+        'title' => 'Singout Menu',
+        'description' => 'STS Custom Configuration Items',
+        'page callback' => 'system_admin_menu_block_page',
+		'access callback'=>TRUE,
+        //'access arguments' => user_access('access administration pages'),
+        'file' => 'system.admin.inc',
+        'file path' => drupal_get_path('module', 'system'),
+        'weight' => -500,
+        'position' => 'left',
+      
+    );
+
+
+
+    return $items;
+}
+
+
+/**
+* @} End of "defgroup osg_singout_menu".
+*/

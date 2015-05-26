@@ -1,0 +1,175 @@
+<?php
+/**
+ * @author Charles Sharpe
+ * @copyright 2013
+ */
+/**
+ * @file
+ * Specifies Thumbnail to Post on Facebook.
+ */
+/**
+ * Implements hook_help.
+ *
+ * Displays help and module information.
+ *
+ * @param path
+ *   Which path of the site we're using to display help
+ * @param arg
+ *   Array that holds the current path as returned from arg() function
+ */
+function fb_thumbnail_help($path, $arg) {
+    switch ($path) {
+        case "admin/help#fb_thumbnail":
+            return '<p>' . t("Specifies Thumbnail to Post on Facebook by writing the following meta data properties<UL><li>og:description<li>og:type<li>og:url<li>og:image</UL>") .
+                '</p>';
+            break;
+    }
+}
+/**
+ * Implements hook_menu().
+ */
+function fb_thumbnail_menu() {
+    $items = array();
+    $items['admin/config/osg/fb_thumbnail'] = array(
+        'title' => 'Facebook Thumbnail',
+        'description' => 'Configuration for Facebook Thumbnail module',
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('fb_thumbnail_form'),
+        'access arguments' => array('access administration pages'),
+        'type' => MENU_NORMAL_ITEM,
+        );
+    return $items;
+}
+/**
+ * 
+ *
+ * @see fb_thumbnail_menu()   
+ */
+function fb_thumbnail_form($form, &$form_state) {
+    $form['fb_thumbnail_thumbnail_file'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Thumbnail File Name'),
+        '#default_value' => variable_get('fb_thumbnail_thumbnail_file'),
+        '#description' => t('Thumbnail to post to Facebook (relative to ' . variable_get('osg_stuf_pic_path', conf_path()) . ')'),
+        '#required' => true,
+        );
+    $options = variable_get('fb_thumbnail_output_prop_captions');
+    $form['fb_thumbnail_output_prop_values'] = array(
+        '#type' => 'checkboxes',
+        '#title' => t('Output properties'),
+        '#description' => t('Specify Which Open Graph Properties to output.'),
+        '#default_value' => variable_get('fb_thumbnail_output_prop_values', array()),
+        '#options' => $options,
+        );
+    //debug($form);
+    return system_settings_form($form);
+}
+/**
+ * Implments hook_preprocess_html()
+ * 
+ * Adds specified open graph meta-properties
+ * 
+ *      og:site_name
+ *      og:title
+ *      og:description
+ *      og:type
+ *      og:url
+ *      og:image
+ * 
+ */
+function fb_thumbnail_preprocess_html(&$vars) {
+    $this_page = current_path();
+    $path_parts = explode('/', $this_page);
+    if (count($path_parts) < 3) {
+        //First Argument should be a valid content type
+        $landing = db_query('SELECT DISTINCT base,module FROM node_type')->fetchAllKeyed();
+        //Add the front page to this list
+        $landing['front_page'] = variable_get('site_frontpage');
+        //debug($path_parts);
+        //debug($landing);
+        if (in_array($path_parts[0], $landing)) {
+            $my_domain = 'http://' . $_SERVER['HTTP_HOST'];
+            $id_prefix = str_replace($this_page, '/', '-');
+            $my_site_name = variable_get('site_name');
+            $my_slogan = variable_get('site_slogan');
+            $thumbnail = $my_domain . "/" . variable_get('osg_stuff_pic_path', conf_path()) . "/" . variable_get('fb_thumbnail_thumbnail_file');
+            $og_title = $my_site_name . '|' . $my_slogan;
+            $my_type = $path_parts[0];
+            $prop_caps = variable_get('fb_thumbnail_output_prop_captions');
+            $prop_vals = variable_get('fb_thumbnail_output_prop_values');
+            $weight = -1500;
+            foreach ($prop_vals as $key => $value) {
+                if ($value == '0') {
+                    unset($prop_vals[$key]);
+                }
+            }
+            $og_description = trim($my_slogan);
+            $meta_tag = array();
+            $valid = (count($path_parts) <= 2);
+            if (!in_array($my_type, array('blog', 'node'))) {
+                $my_type = 'website';
+            }
+            //debug($this_page);
+            if ($valid) {
+                if ($my_type == 'node') {
+                    if (is_numeric($path_parts[1])) {
+                        $node = node_load($path_parts[1]);
+                        if (isset($node)) {
+                            $og_title = $node->title . '|' . $my_site_name;
+                            $summary = strip_tags($node->body['und'][0]['summary']);
+                            $my_type = 'article';
+                            $user = user_load($node->uid);
+                            if ($summary > '') {
+                                $og_description = $summary;
+                            }
+                        }
+                        else {
+                            $valid = false;
+                        }
+                    }
+                    else {
+                        $valid = false;
+                    }
+                }
+                if (($this_page > '') and ($this_page <> '/')) {
+                    $my_domain = $my_domain . '/';
+                }
+                //debug($prop_vals);
+                if ($valid) {
+                    foreach ($prop_vals as $key => $property) {
+                        switch ($property) {
+                            case 'og:description':
+                                $value = $og_description;
+                                break;
+                            case 'og:type':
+                                $value = $my_type;
+                                break;
+                            case 'og:url':
+                                $value = $my_domain . $this_page;
+                                break;
+                            case 'og:image':
+                                $value = $thumbnail;
+                                break;
+                            case 'og:site_name':
+                                $value = $my_site_name;
+                                break;
+                            case 'og:title':
+                                $value = $og_title;
+                                break;
+                        }
+                        $meta_tag = array(
+                            '#tag' => 'meta',
+                            '#weight' => $weight,
+                            '#attributes' => array(
+                                'property' => $property,
+                                'content' => $value,
+                                ),
+                            );
+                        $weight = $weight + 10;
+                        drupal_add_html_head($meta_tag, $id_prefix . '_' . $weight);
+                    }
+                }
+            }
+        }
+    }
+}

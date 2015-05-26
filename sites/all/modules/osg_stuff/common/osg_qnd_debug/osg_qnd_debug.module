@@ -1,0 +1,43 @@
+<?php
+
+/**
+ * @file osg_qnd_debug.module
+ * TODO: Enter file description here.
+ */
+
+/**
+ * Implements hook_help().
+ */
+function osg_qnd_debug_help($path, $arg) {
+  switch ($path) {
+    // Main module help for the block module
+    case 'admin/help#osg_qnd_debug':
+      return '<p>' . t('Shows various Quick and Dirty debugs', array('@blocks' => url('admin/config/user-interface/osg_qnd_debug'))) . '</p>';
+
+    // Help for another path in the block module
+    case 'admin/config/user-interface/osg_qnd_debug':
+      return '<p>' . t('Configue Debug utitlity.') . '</p>';
+  }
+}
+
+/**
+ * Implements hook_menu().
+ */
+function osg_qnd_debug_menu() {
+  $items['osg_qnd_debug_config'] = array(
+    'title' => 'Example Page',
+    'page callback' => 'osg_qnd_debug_config',
+    'access arguments' => array('access content'),
+    'type' => MENU_SUGGESTED_ITEM,
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function osg_qnd_debug_form_alter(&$form, &$form_state, $form_id) {
+  drupal_set_message('form_id: '.$form_id);
+  
+}

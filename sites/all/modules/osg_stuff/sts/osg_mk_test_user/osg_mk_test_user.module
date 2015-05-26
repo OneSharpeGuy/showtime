@@ -1,0 +1,299 @@
+<?php
+
+/**
+* @file osg_mk_test_user.module
+* TODO: Enter file description here.
+*/
+//global $mk_test_user_url;
+//$mk_test_user_url = url('admin / config / people / mk_test_users');
+/**
+* Implements hook_help().
+*/
+
+function osg_mk_test_user_help($path, $arg)
+{
+    //global $mk_test_user_url;
+    switch ($path) {
+        // Main module help for the block module
+        case 'admin/help#mk_test_users':
+        return '<p>' . t('<a href="admin/config/osg/mk_test_users">Generate</a> Test Users.</p>');
+
+
+    }
+}
+
+/**
+* Implements hook_menu().
+*/
+function osg_mk_test_user_menu()
+{
+    //global $mk_test_user_url;
+
+    $items['admin/config/osg/osg_mk_test_user'] = array(
+        'title'          => 'Make Test Users',
+        'page callback'  => 'drupal_get_form',
+        'page arguments'      => array('osg_mk_test_user_form'),
+        'access callback'=> true,
+        'type'           => MENU_NORMAL_ITEM,
+    );
+
+
+    return $items;
+}
+
+
+/**
+* Implements hook_user_presave().
+*/
+function osg_mk_test_user_user_presave( & $edit, $account, $category)
+{
+    // Make sure that our form value 'mymodule_foo' is stored as
+    // 'mymodule_bar' in the 'data' (serialized) column.
+    /*if (isset($edit['mymodule_foo'])) {
+    $edit['data']['mymodule_bar'] = $edit['mymodule_foo'];
+    }
+    */
+
+}
+/**
+* Impliments hook_user_insert
+*
+* @param undefined $edit
+* @param undefined $account
+* @param undefined $category
+*
+*/
+function osg_mk_test_user_user_insert( & $edit, $account, $category)
+{
+    $config = variable_get('osg_mk_test_user_configuration');
+
+
+}
+
+function osg_mk_test_user_fire($users_requested)
+{
+    $uid         = db_query("SELECT value FROM sequences")->fetchField();
+    $user_prefix = variable_get('osg_mk_test_user_user_name_prefix');
+    $config      = variable_get('osg_mk_test_user_configuration');
+    for ($i = 0; $i < $users_requested; $i++) {
+
+        $uid = $uid + 1;
+        if ($uid < 1000) {
+            $uid = substr("000" . $uid, - 3, 3);
+
+        }
+
+        $peeps    = $config['name list'];
+        $pointers = array_rand($peeps, 2);
+        for ($rloop = 0; $rloop < 100; $rloop++) {
+
+
+            $bogus = $peeps[$pointers[0]];
+            $sql   = "SELECT u.uid ";
+            $sql   = $sql .", u.name ";
+            $sql   = $sql .", f.field_firstname_value ";
+            $sql   = $sql .", l.field_lastname_value ";
+            $sql   = $sql ."FROM   users u ";
+            $sql   = $sql ."INNER JOIN field_data_field_firstname f ";
+            $sql   = $sql ."ON f.entity_id = u.uid ";
+            $sql   = $sql ."INNER JOIN field_data_field_lastname l ";
+            $sql   = $sql ."ON l.entity_id = u.uid ";
+            $sql   = $sql ."WHERE  f.field_firstname_value = '".$bogus['First Name']."' ";
+            $sql   = $sql ."AND l.field_lastname_value = '".$bogus['Last Name']."' ";
+            $result= db_query($sql);
+            if ($result->rowCount() == 0) {
+                break;
+            }
+        }        
+        shuffle($bogus['eligible_parts']);
+        $voice_part = $bogus['eligible_parts'][0];
+
+        if ($user_prefix == '') {
+            $user_name = $voice_part.$uid;
+        }else {
+            $user_name = $user_prefix.$uid;
+        }
+        $email    = $user_name . "@example.com";
+
+
+        //This will generate a random password, you could set your own here
+        $password = 'tomato'; // user_password(8);
+
+        //set up the user fields
+        $account  = array(
+            'uid'   => null,
+            'name'  => $user_name,
+            'pass'  => $password,
+            'mail'  => $email,
+            'status'=> 1,
+            'init'  => $email,
+            'roles' => $config['roles'],
+        );
+
+        //the first parameter is left blank so a new user is created
+        $account = user_save(null, $account);
+        /*
+        35 =>
+        array (
+        'name' => 'Kathleen',
+        'eligible_parts' =>
+        array (
+        0 => 'Alto',
+        1 => 'Soprano',
+        ),
+        ),
+        */
+        $account->field_firstname = osg_api_push_fat_value($bogus['First Name']);
+        $account->field_lastname = osg_api_push_fat_value($bogus['Last Name']);
+        $account->field_voice_part = osg_api_push_fat_value(array('tid'=>$config['taxonomy'][$voice_part]));
+
+        user_save($account);
+        drupal_set_message("Account created form $user_name");
+
+
+    }
+
+}
+/**
+* Page callback: Make Test Users
+*
+* @see osg_mk_test_user_menu()
+*/
+function osg_mk_test_user_form($form, & $form_state)
+{
+    osg_mk_test_user_init_config();
+    $form['osg_mk_test_user_user_count'] = array(
+        '#type'         => 'textfield',
+        '#title'        => t('New user count'),
+        '#default_value'=> variable_get('osg_mk_test_user_user_count', 10),
+        '#size'         => 3,
+        '#maxlength'    => 4,
+        '#description'  => t('Number of users to create'),
+        '#required'     => true,
+    );
+    $padding = variable_get('osg_mk_test_user_zero_padding', 3);
+    $form['osg_mk_test_user_zero_padding'] = array(
+        '#type'         => 'textfield',
+        '#title'        => t('Padding'),
+        '#default_value'=> variable_get('osg_mk_test_user_zero_padding', $padding),
+        '#size'         => 3,
+        '#maxlength'    => 6,
+        '#description'  => t('Zero Padding for numeric portion'),
+    );
+    $prefix = t(variable_get('osg_mk_test_user_user_name_prefix', 'test'));
+    $form['osg_mk_test_user_user_name_prefix'] = array(
+        '#type'         => 'textfield',
+        '#title'        => t('Prefix'),
+        '#default_value'=> variable_get('osg_mk_test_user_user_name_prefix', $prefix),
+        '#size'         => 6,
+        '#maxlength'    => 6,
+        '#description'  => t('Prefix for user name (like ' . $prefix . str_pad(1,
+                $padding, '0', STR_PAD_LEFT) . ')'),
+    );
+
+    $options = array(
+        '0'=> 'System',
+        '1'=> 'Local',
+    );
+
+    $default = variable_get('osg_mk_test_user_sequencing', 0);
+    if (!is_numeric($default)) {
+        $default = 0;
+
+    }
+    if (!array_key_exists($default, $options)) {
+        $default = array_flip($options);
+        $default = $default[0];
+    }
+    $description = 'Sequencing for user creation<ul><li>System - Reflect User ID</li><li>Next unique Prefix+Sequence combination</li>';
+
+    $form['osg_mk_test_user_sequencing'] = array(
+        '#type'         => 'radios',
+        '#title'        => t('Sequencing'),
+        '#default_value'=> $default,
+        '#options'      => $options,
+        '#description'  => t($description),
+
+    );
+
+    $form['osg_mk_test_user_exec'] = array(
+        '#type'  => 'submit',
+        '#value' => t('Do it'),
+        '#submit' => array('osg_mk_test_user_save_and_fire'),
+    );
+
+    return system_settings_form($form);
+}
+
+function osg_mk_test_user_save_and_fire($form, & $form_state)
+{
+
+
+    system_settings_form_submit($form, $form_state);
+    osg_mk_test_user_fire($form_state['values']['osg_mk_test_user_user_count']);
+}
+function osg_mk_test_user_init_config()
+{
+    $config = array();
+    $roles = db_query("select rid,name from role where name in ('authenticated user','member')")->
+    fetchAllKeyed();
+    $config['roles'] = $roles;
+
+    $sql        = "SELECT d.name,d.tid ";
+    $sql        = $sql . "FROM taxonomy_term_data d ";
+    $sql        = $sql . "INNER JOIN taxonomy_vocabulary v ON d.vid=v.vid ";
+    $sql        = $sql . "WHERE v.name='Voice Part' ";
+    $definition = db_query($sql)->fetchAllKeyed();
+    $config['taxonomy'] = $definition;
+
+
+    $terms = array(
+        'F' => array(
+            0 => array('term'=> 'Soprano',
+            ),
+            1 => array('term'=> 'Alto',
+            ),
+        ),
+        'M' => array(
+            0 => array('term'=> 'Tenor',
+            ),
+            1 => array('term'=> 'Bass',
+            ),
+        ),
+    );
+
+    include_once'BogusNames.inc';
+    foreach ($BogusNames as $line_num=>$person) {
+        /* If the first letter of the file begins with
+
+        M assume male names
+        F assume female namespace
+        anything else, assume gender neutral
+        */
+        $voice_parts = array();
+        foreach ($terms as $key => $value) {
+            /*var_export(array(
+            'haystack'=>$person['Gender'],
+            'needle' =>$key,
+            'strpos'=>strpos($person['Gender'],$key),
+            'value' =>$value,
+
+            )
+            );*/
+            if ((bool)strpos(' '.$person['Gender'],$key)) {
+                foreach ($value as $part) {
+                    $voice_parts[] = $part['term'];
+                }
+            }
+        }
+
+        shuffle($voice_parts);
+        $BogusNames[$line_num]['eligible_parts'] = $voice_parts;
+
+    }
+
+    $config['name list'] = $BogusNames;
+    variable_set('osg_mk_test_user_configuration', $config);
+
+
+}

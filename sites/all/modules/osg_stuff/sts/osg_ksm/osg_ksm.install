@@ -1,0 +1,26 @@
+<?php
+
+function osg_ksm_schema(){
+	
+	$schema['osg_known_sts_members'] = array(
+		// table definition array goes here
+		'description' => 'New users who will be promoted to Member on Registration',
+		'fields' =>  array(
+			'id' => array(
+				'description' => 'The primary identifier for table.',
+				'type' => 'serial',
+				'unsigned' => TRUE,
+				'not null' => TRUE,
+			),
+			'display_name' => array(
+				'description' => 'Full Name',
+				'type' => 'varchar',
+				'length'=>50,
+				'not null' => TRUE,   
+			) , 			
+		),
+		'primary key' => array('id'),
+	);
+	return $schema;
+}
+?>

@@ -1,0 +1,79 @@
+/*Resize title for register-block block */
+#block-views-register-block .block-title .title
+{
+  font-size: small !important;
+  font-variant: small-caps !important;
+  font-weight: bolder;
+}
+/* MENU_LOCAL_TASK tabs for singout node */
+.tabs.primary
+{
+  font-size: small !important;
+  font-variant: small-caps !important;
+  line-height: 25px;
+  white-space: normal;
+  padding: 0 0 0 0;
+
+}
+
+/* MENU_LOCAL_TASK Tab spacing */
+.tabs.primary a
+{
+  margin: 0;
+}
+
+/* Don't display READ MORE on teasers */
+.view-register .teaser-readmore
+{
+  display: none;
+}
+/* All Events Listing Header Formatting */
+.osg-singout-list-all
+{
+  font-size: larger;
+  font-weight: bolder;
+}
+.osg-singout-list-all > a
+{
+  text-decoration: none;
+}
+/* We don't need no stinking user-picture on no singout node 
+.user-picture img
+{
+  display: none;
+}
+*/
+.page-node-osg-singout-detail .response
+{
+  font-size: 1.1em;
+  font-weight: normal;
+  color: red;
+}
+.voice-part
+{
+  font-style: oblique;
+  font-weight: bold;
+  color: blue;
+}
+
+.summary
+{
+  font-size: 1.2em;
+  font-style: italic;
+  font-weight: bold;
+}
+.respondents > .naked-name > a:link,
+.respondents > .naked-name > a:visited
+{
+  color: inherit;
+  text-decoration: none;
+}
+.respondents > .naked-name > a:hover
+{
+  text-decoration: underline;
+}
+/*Table Headers*/
+
+.singout-summary > thead {
+    font-size: smaller;    
+}

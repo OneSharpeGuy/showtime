@@ -1,0 +1,4 @@
+
+body.bb-sts #secondary-content-wrapper .image-overlay, body.bb-sts #tertiary-content-wrapper .image-overlay {
+    background-image: url("images/stsblue.gif");
+}

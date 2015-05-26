@@ -1,0 +1,619 @@
+<?php
+
+/**
+ * @file
+ * Module file for osg_auto_register
+ */
+include_once 'osg_auto_register_report.inc';
+
+/**
+ *
+ * Implements hook_menu()
+ *
+ * Define menu items and page callbacks.
+ *
+ */
+function osg_auto_register_menu()
+{
+
+    $items['osg/auto/register'] = array(
+        'title' => 'Quick and Dirty Registration',
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('osg_auto_register_form'),
+        'access callback' => true,
+        // 'type' => MENU_SUGGESTED_ITEM,
+        );
+
+    $items['osg_auto_register/%'] = array(
+        'title' => 'Easy Registration',
+        'page callback' => 'osg_auto_register_authenticate',
+        'page arguments' => array(1),
+        'access arguments' => true,
+        'access callback' => true,
+        'type' => MENU_CALLBACK,
+        );
+    $items['osg/auto/register/report'] = array(
+        'title' => 'Auto Registration Report',
+        'page callback' => 'osg_auto_register_report',
+        'access callback' => true,
+        );
+
+    $items['admin/config/osg/autocomplete_stuff'] = array(
+        'title' => 'Auto Register Notification',
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('osg_auto_register_config_form'),
+        'access callback' => true,
+        'type' => MENU_NORMAL_ITEM,
+        );
+    $items['admin/config/osg/autocomplete_stuff/cron'] = array(
+        'title' => 'Configure Cron Job',
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('osg_auto_register_cron_form'),
+        'access callback' => true,
+        'type' => MENU_LOCAL_TASK,
+        );
+    return $items;
+
+}
+
+
+/**
+ *
+ * Implements hook_form()
+ *
+ * Display a node editing form.
+ *
+ */
+
+function osg_auto_register_form()
+{
+
+    // drupal_set_message('osg_auto_register_form');
+    $form['osg_auto_register_doit'] = array(
+        '#type' => 'submit',
+        '#value' => t('Do it'),
+        '#weight' => 50,
+        '#submit' => array('osg_auto_register_demo'),
+        );
+    $form['osg_auto_register_report_now'] = array(
+        '#type' => 'submit',
+        '#value' => t('Report Now'),
+        '#weight' => 50,
+        //'#executes_submit_callback'=>false,
+        '#submit' => array('osg_auto_register_report'),
+        );
+    return $form;
+}
+
+/**
+ * Helper function, register user for event.
+ *
+ * @param
+ * User object or user id of account to register.
+ * @param
+ * Node id of target event.
+ */
+function _osg_auto_register_events_register_user($user, $nid, $state)
+{
+    $msg = "Oops.";
+    // Attempt to load the user object if not passed directly.
+    if (is_numeric($user) && !is_object($user))
+    {
+        $user = user_load($user);
+    }
+    if (isset($user))
+    {
+
+        // Load our event node.
+        $node = node_load($nid);
+        if (!$node)
+        {
+            $msg .= ' Node no longer exists.';
+            return $msg;
+        }
+
+        // Is the user already registered?
+        $is_user_registered = _osg_auto_register_events_return_registered_users($user->
+            uid, $nid);
+        //debug($is_user_registered);
+        if ($is_user_registered)
+        {
+            $msg = 'You are already registered for this event.<br>Go to the <a href="/register">registration page</a> to make changes.';
+        }
+        else
+        {
+            // Create the associated registration entity.
+            $registration = entity_create('registration', array(
+                'user_uid' => $user->uid,
+                'author_uid' => $user->uid,
+                'type' => 'singout',
+                'entity_type' => 'node',
+                'entity_id' => $nid,
+                'count' => 1,
+                'state' => $state,
+
+                ))->save();
+            // reset the extended registration table, since we just bypassed using the form
+            osg_singout_support_reset_table_osg_registration_ext();
+
+        }
+        $msg = true;
+    }
+
+    return $msg;
+}
+
+/**
+ * Helper function
+ *
+ * @return (boolean)
+ * Return false if user is not registered.
+ */
+function _osg_auto_register_events_return_registered_users($uid, $entity_id)
+{
+    $result = false;
+
+    $query = db_select('registration', 'r')->fields('r', array('registration_id'))->
+        condition('entity_id', $entity_id)->condition('user_uid', $uid)->
+        execute()->fetchField();
+
+    //debug($query);
+    if ($query)
+    {
+        $result = true;
+    }
+
+    return (bool)$result;
+}
+
+/**
+ * osg_auto_register_authenticate()
+ *
+ * @param mixed $authenticator
+ * @return
+ */
+function osg_auto_register_authenticate($authenticator)
+{
+
+    //debug($authenticator);
+    $query = db_select('osg_auto_registration_request', 'r');
+    $query->join('osg_users', 'u', 'r.uid=u.uid');
+    $query->join('osg_ical_imported', 'i', 'i.nid=r.nid');
+    $query->fields('r');
+    $query->fields('u', array(
+        'first_name',
+        'last_name',
+        'user_name'));
+    $query->fields('i', array('title'));
+    $query->condition('r.authenticator', $authenticator);
+    $query->condition('r.available', true);
+    $query->condition('i.available', true);
+    $record = $query->execute()->fetchAssoc();
+
+
+    //debug($record);
+    if ($record)
+    {
+        $msg = _osg_auto_register_events_register_user($record['uid'], $record['nid'],
+            $record['state']);
+        //debug($msg);
+        if ($msg === true)
+        {
+            $msg = $record['first_name'] . " " . $record['last_name'] .
+                " has responded '<i>" . $record['label'] . "'</i> for " . $record['title'] .
+                ".";
+            if (variable_get('osg_auto_register_notifier_enable', true))
+            {
+                osg_auto_register_notification($authenticator);
+            }
+        }
+
+    }
+    else
+    {
+        $msg = 'Sorry. Auto-registration for this node is unavailable. Go to the <a href="/register">registration page</a>.';
+    }
+    $sql = "
+    UPDATE osg_auto_registration_request
+    SET available=:available,
+    updated= :updated
+    WHERE association=:association
+    ";
+    $args[':updated'] = time();
+    $args[':available'] = 0;
+    $args['association'] = $record['association'];
+    //db_query($sql,$args);
+    $fields['updated'] = time();
+    $fields['available'] = 0;
+    db_delete('osg_auto_registration_request')->condition('state', $record['state'],
+        '<>')->condition('association', $record['association'])->execute();
+
+    db_delete('osg_auto_registration_request')->condition('uid', $record['uid'])->
+        condition('nid', $record['nid'])->condition('association', $record['association'],
+        '<>')->isNotNull('updated')->execute();
+
+    db_update('osg_auto_registration_request')->fields($fields)->condition('association',
+        $record['association'])->execute();
+    /*
+    db_update('osg_auto_registration_request')->expression('status', 'status | 2')->
+    condition('association', $record['association'])->condition('state', $record['state'])->
+    execute(); //return $value;
+    */
+    return $msg;
+}
+
+/**
+ * Implements hook_node_delete().
+ */
+function osg_auto_register_node_delete($node)
+{
+    db_delete('osg_auto_registration_request')->condition('nid', $node->nid)->
+        execute();
+}
+/**
+ * osg_auto_register_housekeeping
+ *
+ * Cleanup auto_register_table
+ *
+ */
+function osg_auto_register_housekeeping()
+{
+    /*
+    db_delete accepts only a single table
+
+    bulid the result set tring using db_select
+    */
+
+    $query = db_select('osg_auto_registration_request', 'a');
+    $query->fields('a', array('sequence', 'sequence'));
+    $query->join('registration', 'r',
+        'a.nid=r.entity_id AND a.uid=r.user_uid AND a.available=1');
+    $zappers = $query->execute();
+    $zappers = $query->execute()->fetchAllKeyed();
+
+    if (count($zappers) > 0)
+    {
+        $query = db_delete('osg_auto_registration_request');
+        $query->condition('sequence', array_keys($zappers), 'IN');
+        $query->execute();
+    }
+
+    //Make sure all events and all users are still valid
+    $query = db_select('osg_auto_registration_request', 'q');
+    $query->leftJoin('node', 'n', ' q.nid=n.nid');
+    $query->leftJoin('users', 'u', 'q.uid=u.uid');
+    $db_or = db_or();
+    $db_or->isNull('n.nid');
+    $db_or->isNull('u.uid');
+    $query->condition($db_or);
+    $query->fields('q', array('sequence'));
+    $zappers = $query->execute()->fetchAllKeyed();
+
+    if (count($zappers) > 0)
+    {
+        $query = db_delete('osg_auto_registration_request');
+        $query->condition('sequence', array_keys($zappers), 'IN');
+        $query->execute();
+    }
+
+    //Delete expired records
+    $query = db_select('osg_auto_registration_request', 'q');
+    $query->condition('available', true);
+    $query->condition('expiry', time(), "<");
+    $query->fields('q', array('sequence'));
+    $zappers = $query->execute()->fetchAllKeyed();
+
+    if (count($zappers) > 0)
+    {
+        $query = db_delete('osg_auto_registration_request');
+        $query->condition('sequence', array_keys($zappers), 'IN');
+        $query->execute();
+    }
+    $query = db_select('osg_auto_registration_request', 'q');
+    $query->condition('available', true);
+    $query->isNull('expiry');
+    $query->fields('q', array('sequence'));
+    $zappers = $query->execute()->fetchAllKeyed();
+
+    if (count($zappers) > 0)
+    {
+        $query = db_delete('osg_auto_registration_request');
+        $query->condition('sequence', array_keys($zappers), 'IN');
+        $query->execute();
+    }
+}
+
+/**
+ * Init Auto register row
+ *
+ *
+ * $osg_auto_registration_request = array(
+ * array( // row #0
+ * 'authenticator' => '59f00808abde5aa8048c5467b8eb7678',
+ * 'association' => 'ed386cdee6ce9655cafc754fa5242de2',
+ * 'nid' => 22,
+ * 'uid' => 260,
+ * 'type' => 'singout',
+ * 'state' => 'maybe',
+ * 'label' => 'Maybe',
+ * 'inserted' => 1402348795,
+ * 'available' => 0,
+ * 'updated' => 1402348838,
+ * 'sequence' => 4003,
+ * ),
+ * );
+ **/
+function osg_auto_register_init_rows($nid, $uid, $association = '')
+{
+
+
+    $expiry_offset = variable_get('osg_auto_register_expiry');
+
+    if (empty($association))
+    {
+        $association = osg_api_random_string(null, true);
+    }
+    $request = array(
+        'authenticator' => osg_api_random_string(null, true),
+        'association' => $association,
+        'nid' => $nid,
+        'uid' => $uid,
+        'type' => 'singout',
+        'available' => true,
+        );
+    $query = db_select('registration_state', 's');
+    $query->fields('s', array(
+        'label',
+        'name',
+        'description'));
+    $query->condition('active', true);
+    $query->condition('show_on_form', true);
+    $query->orderBy('s.weight');
+    //debug((string)$query);
+    $states = $query->execute();
+
+    /*
+    We will use the re-notification time as the exipiry. Eventually, once a new
+    resquest is written, the old request will be obsolete.
+    */
+
+    foreach ($states as $value)
+    {
+        {
+            $query = db_select('osg_auto_registration_request', 'q');
+            $query->fields('q');
+            $query->condition('nid', $nid);
+            $query->condition('uid', $uid);
+            $query->condition('state', $value->name);
+            //debug((string)$query);
+            $result = $query->execute();
+            if ($result->rowCount() == 0)
+            {
+                $request['state'] = $value->name;
+                $request['authenticator'] = osg_api_random_string(null, true);
+                $request['inserted'] = time();
+                $request['label'] = $value->label;
+                if (!empty($expiry_offset))
+                {
+                    $request['expiry'] = $request['inserted'] + $expiry_offset;
+                }
+                debug($request);
+
+                $query = db_insert('osg_auto_registration_request');
+                $query->fields($request);
+                $query->execute();
+
+            }
+
+        }
+    }
+}
+function osg_auto_register_init_event($nid)
+{
+    //Get a list of users
+    //select uid from osg_users where is_singer = 1
+
+    $query = db_select('osg_users', 'u');
+    $query->fields('u', array('uid'));
+    $query->condition('is_singer', true);
+    $result = $query->execute();
+    $association = osg_api_random_string(null, true);
+    foreach ($result as $row)
+    {
+        osg_auto_register_init_rows($nid, $row->uid, $association);
+    }
+
+}
+
+/**
+ *
+ * Implements hook_user_update()
+ *
+ * A user account was updated.
+ *
+ * Modules may use this hook to update their user data in a custom storage
+ * after a user account has been updated.
+ *
+ * @param $edit
+ *   The array of form values submitted by the user.
+ * @param $account
+ *   The user object on which the operation is performed.
+ * @param $category
+ *   The active category of user information being edited.
+ *
+ * @see hook_user_presave()
+ * @see hook_user_insert()
+ */
+function osg_auto_register_user_update(&$edit, $account, $category)
+{
+    /**
+     * SELECT *
+     * FROM osg_users u
+     * JOIN osg_ical_imported i ON i.available=1
+     * LEFT JOIN osg_auto_registration_request q ON u.uid=q.uid AND i.nid=q.nid
+     */
+    $query = db_select('osg_users', 'u');
+    $query->join('osg_ical_imported', 'i', ' i.available=1');
+    $query->leftJoin('osg_auto_registration_request', 'q',
+        'u.uid=q.uid AND i.nid=q.nid');
+    $query->condition('is_singer', true);
+    $query->isNull('q.nid');
+    $query->fields('i', array('nid'));
+    $query->fields('u', array('uid'));
+    $query->condition('u.uid', $account->uid);
+    $result = $query->execute();
+    foreach ($result as $row)
+    {
+        osg_auto_register_init_rows($row->nid, $row->uid);
+    }
+
+
+}
+/**
+ * osg_auto_register_build_request()
+ *
+ * @param mixed $uid
+ * @param mixed $nid
+ * @return
+ */
+function osg_auto_register_build_request($uid, $nid)
+{
+    global $base_url;
+
+
+    $query = db_select('osg_ical_imported', 'i');
+    $query->fields('i', array('title', 'start_time_unix'));
+    $query->condition('i.nid', $nid);
+
+    $result = $query->execute();
+    $row = $result->fetchAssoc();
+    //    debug($row);
+    $lines = array();
+    $lines[] = '<table border="1"><tr><td>';
+    $lines[] = '<table>';
+    $lines[] = '<tr><td colspan="3" align="center"><a href="' . $base_url .
+        '/node/' . $nid . '">' . $row['title'] . '<br/>' . date('l, F jS Y', $row['start_time_unix']) .
+        '</tr>';
+    $lines[] = '<tr><td colspan="3" align="center"><hr>Possible Responses<hr></td></tr>';
+
+    osg_auto_register_init_rows($nid, $uid);
+    $query = db_select('osg_auto_registration_request', 'q');
+    $query->join('registration_state', 's', 'q.state=s.name');
+    $query->fields('s', array('description'));
+    $query->fields('q');
+    $query->condition('nid', $nid);
+    $query->condition('uid', $uid);
+    //    debug((string )$query);
+    $result = $query->execute();
+    foreach ($result as $row)
+    {
+        $href = $base_url . "/osg_auto_register/" . $row->authenticator;
+
+        $lines[] = "<tr><td align=\"center\"><a href=\"$href\" style=\"text-decoration: none\">" .
+            "<button width=\"50\">$row->label</button></a></td><td>&nbsp;</td>";
+
+        $lines[] = "<td><a href=\"$href\">$row->description</a></td></tr>";
+    }
+    $lines[] = '</table></td></tr></table>';
+    $table = implode("\n", $lines);
+
+    $_SESSION['osg_notifier_associations'][$nid][$uid] = array('association'=>$row->
+            association, 'expiry'=>$row->expiry);
+
+    // drupal_set_message($table);
+    return $table;
+}
+/**
+ * osg_auto_register_demo
+ * find an unregistered node and auto-register
+ *
+ * @return
+ */
+function osg_auto_register_demo()
+{
+
+    /**
+     *   $authenticator = db_select('osg_auto_registration_request','x')
+     *   ->condition('available',1)
+     *   ->fields('x',array('authenticator'))
+     *   ->range(0,1)
+     *   ->execute()
+     *   ->fetchField();
+     */
+    $query = db_select('osg_auto_registration_request', 'a');
+    $query->join('osg_ical_imported', 'i', 'a.nid = i.nid');
+    $query->join('osg_users', 'u', 'a.uid = u.uid');
+    $query->addField('a', 'authenticator');
+    $query->join('osg_singout_notifier_journal', 'j',
+        'a.uid = j.uid AND a.nid = j.nid');
+    $query->condition('a.available', 1);
+    $query->condition('u.is_singer', 1);
+    $query->orderRandom();
+    $query->range(0, 1);
+
+
+    $authenticator = $query->execute()->fetchField();
+    $testing = true;
+    osg_auto_register_notification($authenticator, $testing);
+}
+/**
+ *
+ * Implements hook_form_alter()
+ *
+ * Perform alterations before a form is rendered.
+ *
+ * One popular use of this hook is to add form elements to the node form. When
+ * altering a node form, the node object can be accessed at $form['#node'].
+ *
+ * In addition to hook_form_alter(), which is called for all forms, there are
+ * two more specific form hooks available. The first,
+ * hook_form_BASE_FORM_ID_alter(), allows targeting of a form/forms via a base
+ * form (if one exists). The second, hook_form_FORM_ID_alter(), can be used to
+ * target a specific form directly.
+ *
+ * The call order is as follows: all existing form alter functions are called
+ * for module A, then all for module B, etc., followed by all for any base
+ * theme(s), and finally for the theme itself. The module order is determined
+ * by system weight, then by module name.
+ *
+ * Within each module, form alter hooks are called in the following order:
+ * first, hook_form_alter(); second, hook_form_BASE_FORM_ID_alter(); third,
+ * hook_form_FORM_ID_alter(). So, for each module, the more general hooks are
+ * called first followed by the more specific.
+ *
+ * @param $form
+ *   Nested array of form elements that comprise the form.
+ * @param $form_state
+ *   A keyed array containing the current state of the form. The arguments
+ *   that drupal_get_form() was originally called with are available in the
+ *   array $form_state['build_info']['args'].
+ * @param $form_id
+ *   String representing the name of the form itself. Typically this is the
+ *   name of the function that generated the form.
+ *
+ * @see hook_form_BASE_FORM_ID_alter()
+ * @see hook_form_FORM_ID_alter()
+ * @see forms_api_reference.html
+ */
+
+function osg_auto_register_form_alter(&$form, &$form_state, $form_id)
+{
+    if ($form_id == 'osg_singout_notifier_config_form')
+    {
+        //Place the value just above the [SEND NOW] button
+        $weight = $form['osg_singout_notifier_send_now']['#weight'] *.99;
+
+        $options = osg_api_time_dropdown(array(
+            'control' => 'hours|6|48|6;day;week|1|2',
+            'zero_label' => 'No Expiration',
+            'cron_safe' => true));
+        $form['osg_auto_register_expiry'] = array(
+            '#type' => 'select',
+            '#title' => t('Expiration Offset'),
+            '#description' => t('Time after which associated auto-registration nodes will expire.'),
+            '#default_value' => variable_get('osg_auto_register_expiry', 86400 *
+                7),
+            '#options' => $options,
+            '#weight' => $weight);
+    }
+}

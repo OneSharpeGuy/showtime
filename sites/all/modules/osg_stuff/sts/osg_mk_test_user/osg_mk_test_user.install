@@ -1,0 +1,24 @@
+<?php
+
+/**
+ * Impliments Hook Uninstall
+ * 
+ */
+function osg_mk_test_user_uninstall()
+{
+    $result = db_query("select name as variable_name from variable where name like 'osg_mk_test_user%'");
+
+    foreach ($result as $record)
+    {
+        variable_del($record->variable_name);
+    }
+}
+/**
+ * Impliments Hook Install
+ * 
+ */
+function osg_mk_test_user_install()
+{
+    osg_mk_test_user_init_config();
+
+}

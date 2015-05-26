@@ -1,0 +1,170 @@
+<?php
+
+/**
+* @file
+* Install, update and uninstall functions for the osg_auto_register module.
+*/
+
+
+/**
+* Implements hook_install().
+*/
+function osg_auto_register_install()
+{
+
+
+    // drupal_set_message('osg_auto_register_install');
+
+
+}
+
+
+/**
+* Implements hook_uninstall().
+*/
+function osg_auto_register_uninstall()
+{
+
+
+    // drupal_set_message('osg_auto_register_uninstall');
+
+
+}
+
+/**
+*
+* Implements hook_schema()
+*
+* Define the current version of the database schema.
+*
+* A Drupal schema definition is an array structure representing one or
+* more tables and their related keys and indexes. A schema is defined by
+* hook_schema() which must live in your module's .install file.
+*
+* This hook is called at install and uninstall time, and in the latter
+* case, it cannot rely on the .module file being loaded or hooks being known.
+* If the .module file is needed, it may be loaded with drupal_load().
+*
+* The tables declared by this hook will be automatically created when
+* the module is first enabled, and removed when the module is uninstalled.
+* This happens before hook_install() is invoked, and after hook_uninstall()
+* is invoked, respectively.
+*
+* By declaring the tables used by your module via an implementation of
+* hook_schema(), these tables will be available on all supported database
+* engines. You don't have to deal with the different SQL dialects for table
+* creation and alteration of the supported database engines.
+*
+* See the Schema API Handbook at http://drupal.org/node/146843 for
+* details on schema definition structures.
+*
+* @return
+* A schema definition structure array. For each element of the
+* array, the key is a table name and the value is a table structure
+* definition.
+*
+* @ingroup schemaapi
+*/
+
+function osg_auto_register_schema()
+{
+    $schema['osg_auto_registration_request'] = array(
+        'description'=> 'QND Registration Request',
+        'fields'                                                   => array(
+            'authenticator' => array(
+                'description'=> 'GUID used to retrive request specifics',
+                'type'       => 'varchar',
+                'length'     => '50',
+                'not null'   => true,
+            ),
+            'association'                     => array(
+                'description'=> 'Maps related states for same node',
+                'type'       => 'varchar',
+                'length'     => '50',
+                'not null'   => true,
+            ),
+            'nid'                                                                                                     => array(
+                'description'=> 'Node ID (Entity ID)',
+                'type'       => 'int',
+                'not null'   => true,
+            ),
+            'uid'                                                                                                     => array(
+                'description'=> 'Author ID',
+                'type'       => 'int',
+                'not null'   => true,
+            ),
+            'type'                                                                                           => array(
+                'description'=>
+                'The registration_type.type of this registration.',
+                'type'       => 'varchar',
+                'length'     => '32',
+                'not null'   => true,
+                'default'    => '',
+            ),
+            'state'                                                                                 => array(
+                'description'=>
+                'The registration_state.name of this registration.',
+                'type'       => 'varchar',
+                'length'     => '32',
+                'not null'   => true,
+                'default'    => '',
+            ),
+            'label'                                                                                 => array(
+                'description'=>
+                'The human readable name of the registration state.',
+                'type'       => 'varchar',
+                'length'     => '128',
+                'not null'   => true,
+            ),
+            'inserted'                                                   => array(
+                'description'=> 'Time row was inserted',
+                'type'       => 'int',
+                'not null'   => true,
+            ),
+            'available'                                         => array(
+                'description'=> 'Available for Auto-registration',
+                'type'       => 'int',
+                'size'       => 'tiny',
+                'not null'   => true,
+            ),
+            'updated'                                                             => array(
+                'description'=> 'Time row was last updated',
+                'type'       => 'int',
+                'not null'   => false,
+            ),
+            'sequence'                                                   => array(
+                'description'=> 'Primay Key',
+                'type'       => 'serial',
+                'not null'   => true,
+            ),
+        ),
+        'primary key' => array('sequence'),
+    );
+    //Update 7001
+    $schema['osg_auto_registration_request']['fields'] = array(
+        'expiry' => array
+        (
+            'description'=>
+            'Time this request expires and row will subsequently be deleted',
+            'type'       => 'int',
+            'not null'   => false,
+        ),
+    );
+    return $schema;
+}
+
+/**
+* Add [expiry] column to  field to [osg_auto_registration_request] table.
+*/
+function osg_auto_register_update_7001()
+{
+    $expiry = array
+    (
+        'description'=> 'Time this request expires and row will subsequently be deleted',
+        'type'       => 'int',
+        'not null'   => false,
+    )
+    ;
+    db_add_field('osg_auto_registration_request', 'expiry', $expiry);
+
+}

@@ -1,0 +1,108 @@
+<?php 
+/**
+ * @file
+ * Displays a PollDaddy nero styled voting widget.
+ */
+
+/**
+ * Implements hook_help.
+ *
+ * Displays help and module information.
+ *
+ * @param path
+ *   Which path of the site we're using to display help
+ * @param arg
+ *   Array that holds the current path as returned from arg() function
+ */
+function thumbs_up_down_help($path, $arg)
+{
+    switch ($path)
+    {
+        case "admin/help#thumbs_up_down":
+            return '<p>' . t("Displays a PollDaddy nero styled voting widget") . '</p>';
+            break;
+    }
+}
+
+/**
+ * Implements hook_menu().
+ */
+function thumbs_up_down_menu()
+{
+    $items = array();
+
+    $items['admin/config/services/thumbs_up_down'] = array(
+        'title' => 'Thumbs Up/Down',
+        'description' => 'Configuration for Thumbs Up/Down module',
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('thumbs_up_down_form'),
+        'access arguments' => array('access administration pages'),
+        'type' => MENU_NORMAL_ITEM,
+        );
+
+    return $items;
+}
+
+/**
+ * Page callback: Current posts settings
+ *
+ * @see thumbs_up_down_menu()
+ */
+function thumbs_up_down_form($form, &$form_state)
+{
+    $form['thumbs_up_down_widget_id'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Widget ID'),
+        '#default_value' => variable_get('thumbs_up_down_widget_id'),
+        '#size' => 7,
+        '#maxlength' => 7,
+        '#description' => t('Polldaddy Widget ID'),
+        '#required' => true,
+        );
+    $types = node_type_get_types();
+    $options = array();
+    foreach ($types as $type)
+    {
+        $options[$type->type] = $type->name;
+    }
+    $form['thumbs_up_down_nodetypes'] = array(
+        '#type' => 'checkboxes',
+        '#title' => t('Node Types'),
+        '#description' => t('Apply comments to only the following node types.'),
+        '#default_value' => variable_get('thumbs_up_down_nodetypes', array()),
+        '#options' => $options,
+        );
+    return system_settings_form($form);
+}
+/**
+ * Implements of hook_node_view().
+ */
+function thumbs_up_down_node_view($node, $view_mode, $langcode)
+{
+    $types = variable_get('thumbs_up_down_nodetypes', array());
+    if (in_array($node->type, $types))
+    {
+
+        $widget_id = variable_get('thumbs_up_down_widget_id');
+        $nid = $node->nid;
+        $pos_id = '_' . $nid;
+        $widget_uid = $widget_id . $pos_id;
+        $node_url = $_ENV['HTTP_HOST'] . '/' . drupal_get_path_alias('node/' . $nid);
+        $additional_field = '
+<div id="pd_rating_holder_' . $widget_uid . '"></div>
+<script type="text/javascript">
+PDRTJS_settings_' . $widget_uid . ' = {
+"id" : "' . $widget_id . '",
+"unique_id" : "' . $widget_uid . '",
+"title" : "' . $node->title . '",
+"permalink" : "' . $node_url . '",
+"item_id" : "' . $pos_id . '"
+};</script>
+<script type="text/javascript" src="http://i0.poll.fm/js/rating/rating.js"></script>';
+        $node->content['thumbs_up_down'][0] = array(
+            '#markup' => $additional_field,
+            '#weight' => 10,
+
+            );
+    }
+}

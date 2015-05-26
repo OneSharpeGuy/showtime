@@ -1,0 +1,8 @@
+name = Pending Member Resolution
+description = Promote Pending Member to Member or remove pending status
+dependencies[]=views_php
+dependencies[]=uuid
+package = Chuck Sharpe - Custom Mods
+core = 7.x
+
+configure = admin/config/people/prm

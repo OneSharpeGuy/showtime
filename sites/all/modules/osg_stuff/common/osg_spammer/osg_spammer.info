@@ -1,0 +1,7 @@
+name = Suspected Spam/Bot Blocker 
+description = Block Suspected Spammers
+package = Chuck Sharpe - Custom Mods
+core = 7.x
+
+; NEW LINE
+configure = admin/config/system/osg_spammer

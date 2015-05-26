@@ -1,0 +1,164 @@
+<?php
+
+/**
+* Implements  hook_install()
+*
+*/
+function osg_singout_sync_install()
+{
+	variable_set('osg_singout_sync_next_execution', time() + 86400); //push cron job execution to a long time away'
+	variable_set('osg_singout_sync_interval', 86400); //Default interval, once a day
+	variable_set('osg_singout_sync_url',
+		'https://www.google.com/calendar/ical/stsingers%40gmail.com/public/basic.ics'); //This is the default URL for the public STS Performance Calendar
+
+}
+function osg_singout_sync_schema()
+{
+	$schema = array();
+
+	$schema['osg_ical_imported'] = array(
+		'description'=> 'External STS Caendar Calendar',
+		'fields'      => array(
+			'unique_id'         => array(
+				'description'=> 'ical id (like nr8au81cfj1hb46g08scc6u0co@google.com)',
+				'type'       => 'varchar',
+				'length'     => '50',
+				'not null'   => TRUE,
+			),
+			'session_uuid'      => array(
+				'description'=> 'session in which event was originally imported',
+				'type'       => 'varchar',
+				'length'     => '50',
+				'not null'   => TRUE,
+			),
+			'calendar_url'      => array(
+				'description'=> 'Google Calendar URL',
+				'type'       => 'varchar',
+				'length'     => '255',
+				'not null'   => FALSE,
+			),
+			'start_time_native' => array(
+				'description'=> 'Start Time as it appears in the ical file',
+				'type'       => 'varchar',
+				'length'     => '20',
+				'not null'   => TRUE,
+			),
+			'start_time_unix'   => array(
+				'description'=> 'UNIX TIMESTAMP of ical start_time',
+				'type'       => 'int',
+				'not null'   => TRUE,
+			),
+			'location'          => array(
+				'description'=> 'Street Address of Venue',
+				'type'       => 'varchar',
+				'length'     => '255',
+				'not null'   => FALSE,
+			),
+			'title'             => array(
+				'description'=> 'Title of event or name of Venue',
+				'type'       => 'varchar',
+				'length'     => '255',
+				'not null'   => FALSE,
+			),
+			'description'       => array(
+				'description'=> 'Body is built from start time location and venue. Any additional information to include should appear in this field',
+				'type'       => 'text',
+				'not null'   => FALSE,
+			),
+			'nid'               => array(
+				'description'=> 'ID of associated singout node',
+				'type'       => 'int',
+				'not null'   => FALSE,
+			),
+			'initial_import'    => array(
+				'description'=> 'Time of Initial Import',
+				'type'       => 'int',
+				'not null'   => FALSE,
+			),
+			'last_update'       => array(
+				'description'=> 'TODO: please describe this field!',
+				'type'       => 'int',
+				'not null'   => FALSE,
+			),
+			'last_seen'         => array(
+				'description'=> 'Last time node was examined by google calendar',
+				'type'       => 'int',
+				'not null'   => FALSE,
+			),
+			'available'         => array(
+				'description'=> 'Available for registration',
+				'type'       => 'int',
+				'size'       => 'tiny',
+				'not null'   => FALSE,
+				'default'    => 0,
+			),
+		),
+		'primary key' => array('unique_id'),
+	);
+
+
+	$schema['osg_ical_log'] = array(
+		'description'=> 'Changes and Updates to ical imports',
+		'fields'                               => array(
+			'id'                                                             => array(
+				'description'=> 'Auto-incr Primay Key',
+				'type'       => 'serial',
+				'unsigned'   => true,
+				'not null'   => true,
+			),
+			'unique_id'                   => array(
+				'description'=>
+				'ical id like nr8au81cfj1hb46g08scc6u0co@google.com',
+				'type'       => 'varchar',
+				'length'     => '50',
+				'not null'   => true,
+			),
+			'session_uuid' => array(
+				'description'=>
+				'session in which event was originally imported',
+				'type'       => 'varchar',
+				'length'     => '50',
+				'not null'   => true,
+			),
+			'message'                               => array(
+				'description'=> 'Description of Change',
+				'type'       => 'varchar',
+				'length'     => '255',
+				'not null'   => true,
+			),
+			'old_value'                   => array(
+				'description'=> 'Serialized Original Column Value',
+				'type'       => 'text',
+				'not null'   => false,
+			),
+			'new_value'                   => array(
+				'description'=> 'Serialized New Column Value',
+				'type'       => 'text',
+				'not null'   => false,
+			),
+			'change_time'       => array(
+				'description'=> 'Time row was written to table',
+				'type'       => 'int',
+				'not null'   => false,
+			),
+			'available'                   => array(
+				'description'=> 'Determines eligibility of Node',
+				'type'       => 'int',
+				'unsigned'   => true,
+				'not null'   => true,
+				'default'    => 0,
+			),
+		),
+		'primary key' => array(0=> 'id',       ),
+	);
+
+
+	return $schema;
+}
+/**
+* Implement hook_enable()
+*/
+function osg_singout_sync_enable()
+{
+	//osg_singout_sync_column_sync();
+}

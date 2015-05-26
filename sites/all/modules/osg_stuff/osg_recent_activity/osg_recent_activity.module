@@ -1,0 +1,476 @@
+<?php
+
+/**
+* @file
+* Module file for osg_recent_activity
+*/
+
+
+/**
+*
+* Implements hook_menu()
+*
+* Define menu items and page callbacks.
+*
+*/
+function osg_recent_activity_menu() {
+  $items = array();
+
+  $items['admin/config/osg/osg_recent_activity'] = array(
+    'title'        => 'Block Showing Recent Node Activity',
+    'page callback'=> 'osg_recent_activity_page',
+    'type'         => MENU_SUGGESTED_ITEM,
+  );
+
+  return $items;
+}
+function osg_recent_activity_page() {
+  $page = array(
+    '#type'  => 'markup',
+    '#markup'=> t('Block Showing Recent Node Activity'),
+  );
+
+
+  return $page;
+}
+//
+///**
+// *
+// * Implements hook_help()
+// *
+// * Provide online user help.
+// *
+// */
+//function osg_recent_activity_help($path, $arg)
+//{
+//
+//    $helpText = "";
+//    switch ($path) {
+//        case 'admin / setting / osg_recent_activity':
+//            $helpText = 'Block Showing Recent Node Activity';
+//            break;
+//    }
+//    return ' < p > ' . t($helpText) . '</p > ';
+//}
+function osg_recent_activity_cron() {
+  // Default to an hourly interval. Of course, cron has to be running at least
+  // hourly for this to work.
+  $interval = variable_get('osg_recent_activity_interval', 60 * 60);
+  // We usually don't want to act every time cron runs (which could be every
+  // minute) so keep a time for the next run in a variable.
+
+  if (time() >= variable_get('osg_recent_activity_next_execution', 0)) {
+    // This is a silly example of a cron job.
+    // It just makes it obvious that the job has run without
+    // making any changes to your database.
+    osg_recent_activity_update_node_daycount();
+    if (!empty($GLOBALS['osg_recent_activity_show_status_message'])) {
+      drupal_set_message(t('osg_recent_activity executed at %time', array('%time'=>
+            osg_api_get_local_date())));
+    }
+    variable_set('osg_recent_activity_next_execution', time() + $interval);
+  }
+}
+/**
+* The form to provide a link to cron.php.
+*/
+function osg_recent_activity_form($form, & $form_state) {
+  $form['status'] = array(
+    '#type' => 'fieldset',
+    '#title'=> t('Cron status information'),
+  );
+  $form['status']['last'] = array('#markup'=> '<div>' . t('osg_recent_activity_cron() will next execute the first time cron runs after %time (%seconds seconds from now)' .
+      '</div>', array(
+        '%time' => date_iso8601(variable_get('osg_recent_activity_next_execution', time
+            ())),
+        '%seconds' => variable_get('osg_recent_activity_next_execution', time()) - time
+        (),
+      )),);
+
+  if (user_access('administer site configuration')) {
+    $form['cron_run'] = array(
+      '#type' => 'fieldset',
+      '#title'=> t('Run cron manually'),
+    );
+    $form['cron_run']['cron_reset'] = array(
+      '#type'         => 'checkbox',
+      '#title'        => t("Run osg_recent_activity's cron regardless of whether interval has expired."),
+      '#default_value'=> false,
+    );
+    $form['cron_run']['cron_trigger'] = array(
+      '#type'  => 'submit',
+      '#value' => t('Run cron now'),
+      '#submit' => array('osg_recent_activity_form_cron_run_submit'),
+    );
+  }
+
+
+  $form['configuration'] = array(
+    '#type' => 'fieldset',
+    '#title'=> t('Configuration of osg_recent_activity_cron()'),
+  );
+  $form['configuration']['osg_recent_activity_interval'] = array(
+    '#type'         => 'select',
+    '#title'        => t('Cron interval'),
+    '#description'  => t('Time after which osg_recent_activity_cron will respond to a processing request.'),
+    '#default_value'=> variable_get('osg_recent_activity_interval', 60 * 60),
+    '#options'                   => array(
+      60          => t('1 minute'),
+      300         => t('5 minutes'),
+      3600        => t('1 hour'),
+      60 * 60 * 24=> t('1 day'),
+    ),
+  );
+
+  return system_settings_form($form);
+}
+
+/**
+* Allow user to directly execute cron, optionally forcing it.
+*/
+function osg_recent_activity_form_cron_run_submit($form, & $form_state) {
+  if (!empty($form_state['values']['cron_reset'])) {
+    variable_set('osg_recent_activity_next_execution', 0);
+  }
+
+  // We don't usually use globals in this way. This is used here only to
+  // make it easy to tell if cron was run by this form.
+  $GLOBALS['osg_recent_activity_show_status_message'] = true;
+  if (drupal_cron_run()) {
+    drupal_set_message(t('Cron ran successfully.'));
+  }else {
+    drupal_set_message(t('Cron run failed.'), 'error');
+  }
+}
+
+/**
+* #submit function used to add the items to the queue when signaled by
+* the form.
+*/
+function osg_recent_activity_add_jobs_to_queue($form, & $form_state) {
+  $queue     = $form_state['values']['queue'];
+  $num_items = $form_state['values']['num_items'];
+
+  $queue     = DrupalQueue::get($queue);
+  for ($i = 1; $i <= $num_items; $i++) {
+    $item = new stdClass();
+    $item->created = time();
+    $item->sequence = $i;
+    $queue->createItem($item);
+  }
+}
+/**
+* Update osg_node_daycount_table
+*
+*/
+function osg_recent_activity_update_node_daycount() {
+
+  $sql    = "
+  SELECT e.*
+  FROM
+  (SELECT c.nid,
+  a.uid,
+  FLOOR(a.timestamp / 86400) * 86400 start_of_day,
+  COUNT(*) daycount,
+  MAX(a.timestamp) touchtime
+  FROM node_counter c
+  INNER JOIN accesslog a ON CONCAT('node/',c.nid) = a.path
+  LEFT JOIN blocked_ips b ON b.ip = a.hostname
+  WHERE (a.timestamp < FLOOR(UNIX_TIMESTAMP() / 86400) * 86400)
+  AND b.ip IS NULL
+  GROUP BY c.nid,
+  a.uid,
+  start_of_day) e
+  LEFT JOIN osg_node_daycount d ON e.nid=d.nid
+  AND e.start_of_day=d.start_of_day
+  AND e.uid =d.uid
+  WHERE d.id IS NULL
+  ";
+  //drupal_set_message($sql);
+  $result = db_query($sql);
+  foreach ($result as $row) {
+    //debug($row);
+
+    $keys['nid'] = $row->nid;
+    $keys['start_of_day'] = $row->start_of_day;
+    //$keys['start_of_day'] = osg_api_start_of_day($row->touchtime);
+    $keys['uid'] = $row->uid;
+    //$fields = $keys;
+    $fields['daycount'] = $row->daycount;
+    $fields['touchtime'] = $row->touchtime;
+
+    db_merge('osg_node_daycount')->key($keys)->fields($fields)->execute();
+
+    variable_set('osg_recent_activity_update_node_daycount', time());
+  }
+}
+
+/**
+* Implements hook_block_configure().
+*
+* This hook declares configuration options for blocks provided by this module.
+*/
+function osg_recent_activity_block_configure($delta = '') {
+  // The $delta parameter tells us which block is being configured.
+  // In this example, we'll allow the administrator to customize
+  // the text of the 'configurable text string' block defined in this module.
+  $form = array();
+  switch ($delta) {
+    case 'osg_recent_activity_recent':
+    $types   = node_type_get_types();
+    $options = array();
+    foreach ($types as $type) {
+      $options[$type->type] = $type->name;
+    }
+    $form['osg_recent_activity_recent_nodetypes'] = array(
+      '#type'         => 'checkboxes',
+      '#title'        => t('Node Types'),
+      '#description'  => t('Node types to include.'),
+      '#default_value'=> variable_get('osg_recent_activity_recent_nodetypes', array()),
+      '#options'      => $options,
+    );
+    $form['osg_recent_activity_recent_nodecount'] = array(
+      '#type'         => 'textfield',
+      '#title'        => t('Target Item Count'),
+      '#size'         => 5,
+      '#description'  => t('Approximate number of items to show. (0 = All nodes viewed today)'),
+      '#default_value'=> variable_get('osg_recent_activity_recent_nodecount', 10),
+    );
+    $user_list = "";
+    $user_array= variable_get('osg_recent_activity_exempted_users', array());
+    if (is_array($user_array)) {
+      $user_list = implode(',', array_keys($user_array));
+    }
+    $form['osg_recent_activity_exempted_users'] = array(
+      '#type'             => 'textfield',
+      '#title'            => t('Exempted Users'),
+      '#autocomplete_path'=> 'admin/config/osg/autocomplete/user',
+      '#default_value'    => $user_list,
+      //'#default_value'=>'admin,onesharpeguy',
+      '#description'=> t('Notification email sender.'),
+      '#size'             => 30,
+    );
+    break;
+
+  }
+  return $form;
+}
+/**
+* Implements hook_block_save().
+*
+* This hook declares how the configured options for a block
+* provided by this module are saved.
+*/
+
+function osg_recent_activity_block_save($delta = '', $edit = array()) {
+  // We need to save settings from the configuration form.
+  // We need to check $delta to make sure we are saving the right block.
+  switch ($delta) {
+    case 'osg_recent_activity_recent':
+    variable_set('osg_recent_activity_recent_nodecount', $edit['osg_recent_activity_recent_nodecount']);
+    variable_set('osg_recent_activity_recent_nodetypes', $edit['osg_recent_activity_recent_nodetypes']);
+    $user_array = _osg_recent_activity_buid_user_array($edit['osg_recent_activity_exempted_users']);
+    variable_set('osg_recent_activity_exempted_users', $user_array);
+    break;
+
+  }
+  return;
+}
+/**
+*
+* @users is a comma sererated list of user names
+*
+* @return
+*/
+function _osg_recent_activity_buid_user_array($user_list) {
+  $sql        = "SELECT name,uid FROM users WHERE name IN (:users)";
+  $user_array = explode(',', $user_list);
+  if (!is_array($user_array)) {
+    $user_array = array();
+  }
+  foreach ($user_array as $value) {
+    $user_array[] = trim($value);
+  }
+
+  $args = array(':users'=> $user_array);
+  $result     = db_query($sql, $args);
+  $user_array = $result->fetchAllKeyed();
+
+  return $user_array;
+}
+/**
+* Implements hook_block_view().
+*
+* This hook generates the contents of the blocks themselves.
+*/
+function osg_recent_activity_block_view($delta = '') {
+
+  //The $delta parameter tells us which block is being requested.
+  switch ($delta) {
+    case 'osg_recent_activity_recent':
+    $block_title = "";
+    $block['content'] = osg_recent_activity_contents($block_title);
+    $block['title'] = $block_title;
+    break;
+
+  }
+  return $block;
+}
+/**
+* A module-defined block content function.
+*/
+function osg_recent_activity_contents( & $block_title) {
+  $body = "";
+  if (variable_get('osg_recent_activity_update_node_daycount', 0) < strtotime("today")) {
+    osg_recent_activity_update_node_daycount();
+  }
+  $sql        = "
+  SELECT n.title,
+  c.*
+  FROM node n
+  INNER JOIN
+  (SELECT a.nid,
+  MAX(touchtime) touchtime,
+  SUM(daycount) daycount
+  FROM osg_node_daycount a
+  INNER JOIN
+  (SELECT nid,
+  MAX(start_of_day) start_of_day,
+  uid
+  FROM osg_node_daycount
+  WHERE uid NOT IN (:uids)
+  AND nid NOT IN
+  (SELECT nid
+  FROM node_counter
+  WHERE daycount>0)
+  GROUP BY nid,
+  uid)b ON a.nid=b.nid
+  AND a.start_of_day=b.start_of_day
+  AND a.uid=b.uid
+  GROUP BY a.nid
+  UNION SELECT nid,
+  TIMESTAMP,
+  daycount
+  FROM node_counter
+  WHERE daycount>0) c ON n.nid=c.nid
+  WHERE n.status=1
+  AND TYPE IN(:node_types)
+  ORDER BY touchtime DESC
+  ";
+  $node_types = array_filter(variable_get('osg_recent_activity_recent_nodetypes'));
+
+  $uids       = variable_get('osg_recent_activity_exempted_users', array());
+  if (count($uids) == 0) {
+    $uids = array(null);
+  }
+
+  $result = db_query($sql, array(':node_types'=> $node_types,':uids'      => $uids));
+  $body              = 'this is a test';
+  $chrono            = osg_api_chrono_array('hours;days|1|14;weeks');
+  $chrono_key        = array_values(array_flip($chrono));
+  $chrono_index      = 0;
+  //debug($chrono);
+  //debug($chrono_key);
+  $target_node_count = variable_get('osg_recent_activity_recent_nodecount', 10);
+
+  $items             = array();
+  $done = false;
+  $item_count   = 0;
+  $start_of_day = floor(time() / 86400) * 86400;
+  $age          = 0;
+  if ($target_node_count == 0) {
+    $chrono_index = count($chrono_key) - 1;
+  }
+  foreach ($result as $row) {
+    if (node_access('view', node_load($row->nid))) {
+      if ($target_node_count == 0) {
+        if ($row->touchtime > $start_of_day) {
+          break;
+        }
+      }
+      $age = time() - $row->touchtime;
+      if ($item_count >= $target_node_count) {
+        if ($age > $chrono_key[$chrono_index]) {
+          break;
+        }
+      }
+      $hits = $row->daycount;
+      switch ($hits) {
+        case 1:
+        $hits = "$hits view";
+        break;
+        case 0:
+        $hits = "";
+        break;
+        default:
+        $hits = "$hits views";
+      }
+      if ($hits == '') {
+        $tipper = "Last viewed " . osg_api_get_local_date($row->touchtime, "l, F jS") .
+        " at " . osg_api_get_local_date('h:i:s A', $row->touchtime);
+      }else {
+        $tipper = "$hits. Last view at " . osg_api_get_local_date($row->touchtime,
+          'h:i:s A');
+      }
+
+      $items[] = "<li><a href=\"/node/" . $row->nid . "\" title=\"$tipper\">" . $row->
+      title . "</a></li>";
+
+
+      $item_count = count($items);
+      if ($item_count <= $target_node_count) {
+        while ($age >= $chrono_key[$chrono_index]) {
+          $chrono_index++;
+        }
+      }
+
+ /*     
+     debug(array(
+         '$row'                      =>(array) $row,
+         '$age'                      => $age,
+         '$chrono_key[$chrono_index]'=> $chrono_key[$chrono_index],
+         '$tipper'                   => $tipper,
+         '$start_of_day'             => $start_of_day,
+         'chrono key term'           => $chrono[$chrono_key[$chrono_index]],
+         '$item_count'               =>$item_count,
+       )
+     );
+   */   
+    }
+  }
+  $body = "<div class=\"item-list\"><ul>" . implode("\n", $items) . "</ul></div>";
+
+  if ($target_node_count == 0) {
+    $block_title = "Viewed today";
+  }else {
+    $extra = $chrono[$chrono_key[$chrono_index]];
+    if (substr($extra, 0, 2) == "1 ") {
+      $extra = trim(substr($extra, 2));
+    }
+    $block_title = "Viewed in the last $extra";
+  }
+
+
+  return $body;
+}
+/**
+* Implements hook_block_info().
+*
+* This hook declares what blocks are provided by the module.
+*/
+function osg_recent_activity_block_info() {
+  // This hook returns an array, each component of which is an array of block
+  // information. The array keys are the 'delta' values used in other block
+  // hooks.
+  // The required block information is a block description, which is shown
+  // to the site administrator in the list of possible blocks. You can also
+  // provide initial settings for block weight, status, etc.
+  // Many options are defined in hook_block_info():
+  $blocks['osg_recent_activity_recent'] = array(
+    'info'  => t('OSG: Recent Activity'),
+    //       'status' => true,
+    //       'region' => 'sidebar_second',
+    'weight'=> - 500,
+  );
+  return $blocks;
+}

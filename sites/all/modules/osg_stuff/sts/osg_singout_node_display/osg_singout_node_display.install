@@ -1,0 +1,23 @@
+<?php
+/**
+* @file osg_singout_node_display.install
+* TODO: Enter file description here.
+*/
+
+
+/**
+* Implements hook_install().
+*/
+function osg_singout_node_display_intsall() {
+
+
+}
+
+
+/**
+* Implements hook_uninstall().
+*/
+function osg_singout_node_display_unintsall() {
+
+
+}

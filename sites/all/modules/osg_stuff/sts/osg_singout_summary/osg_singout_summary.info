@@ -1,0 +1,5 @@
+name = STS Singout Summary
+description = Reporting For Sing-out Module
+stylesheets[all][] = osg_singout_summary.css
+package = Chuck Sharpe - Custom Mods
+core = 7.x

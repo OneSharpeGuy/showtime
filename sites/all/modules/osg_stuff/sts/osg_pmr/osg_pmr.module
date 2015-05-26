@@ -1,0 +1,231 @@
+<?php
+
+/**
+* @file osg_pmr.module
+* TODO: Enter file description here.
+*/
+
+
+/**
+* Implements hook_menu()..
+*/
+function osg_pmr_menu(){
+
+  // Drupal provides magic placeholder processing as well, so if the placeholder
+  // is ' % osg_pmr_arg_optional', the function
+  // osg_pmr_arg_optional_load($arg) will be called to translate the path
+  // argument to a more substantial object. $arg will be the value of the
+  // placeholder. Then the return value of osg_pmr_id_load($arg) will be
+  // passed to the 'page callback'.
+  // In addition, if (in this case) osg_pmr_arg_optional_to_arg() exists,
+  // then a menu link can be created using the results of that function as a
+  // default for % osg_pmr_arg_optional.
+
+  $items = array();
+
+  $items['osg/pmr/%/%'] = array(
+    'title'          => 'Resolve user role',
+    'page callback'  => 'osg_pmr_action',
+    'page arguments'     => array(2,3),
+    'access callback'=> user_access('administer users'),
+    'type'           => MENU_CALLBACK,
+  );
+  $items['admin/config/osg/pmr'] = array(
+    'title'          =>'Pending Member Resolution',
+    'page callback'  => 'drupal_get_form',
+    'page arguments'     => array('osg_pmr_form'),
+    'description'    => 'Pending member role resolution parameters',
+    'access callback'=>true,
+    'type'           => MENU_NORMAL_ITEM,
+  );
+  /*$items['osg_pmr_listing'] = array(
+  'title'          =>'Pending Member Listing',
+  'page callback'  =>'osg_pmr_listing',
+  'access callback'=>TRUE,
+  'description'    =>'Lists pending members for role resolution',
+  'type'           =>MENU_CALLBACK,
+  );*/
+  $items['osg/pmr/listing'] = array(
+    'title'          =>'Pending Member Listing',
+    'page callback'  =>'osg_pmr_listing',
+    'access callback'=>TRUE,
+    'description'    =>'Lists pending members for role resolution',
+    'type'           =>MENU_CALLBACK,
+  );
+  return $items;
+}
+function osg_pmr_form($node, & $form_state){
+
+  $form['title'] = array(
+    '#markup'=> 'Pending Member Resolution Configure',
+
+  );
+  $roles   = osg_pmr_get_roles();
+  $options = array();
+  foreach($roles as $key=> $value){
+    $options[$key] = $key;
+  }
+  $form['osg_pmr_roles_2b_resolved'] = array(
+    '#type'         => 'checkboxes',
+    '#title'        => t('Roles Resolution Targets'),
+    '#description'  => t('Resovle to only the following node types.'),
+    '#default_value'=> variable_get('osg_pmr_roles_2b_resolved', array()),
+    '#options'      => $options,
+  );
+  $form['osg_pmr_pending_member_role'] = array(
+    '#type'         => 'radios',
+    '#title'        => t('Pending Member Role'),
+    '#description'  => t('Resovle to only the following node types.'),
+    '#default_value'=> variable_get('osg_pmr_pending_member_role','pending member'),
+    '#options'      => $options,
+  );
+  $form['osg_pmr_listing_page'] = array(
+    '#type'         =>'textfield',
+    '#title'        => 'List Page',
+    '#default_value'=> variable_get('osg_pmr_listing_page','pending_member'),
+    '#size'         => 30,
+    '#maxlength'    =>128,
+    '#description'  => 'Pending User List Page',
+    '#required'     => true,
+  );
+  $form['osg_pmr_email_subject'] = array(
+    '#type'         => 'textfield',
+    '#title'        => t('Subject'),
+    '#required'     => TRUE,
+    '#size'         => 128,
+    '#desciption'   => t('Subject of member promotion email'),
+    '#default_value'=> variable_get('osg_pmr_email_subject','Account Updated'),
+  );
+  $default = 'You account has been promoted to STS Member status. '
+  .'You are now accordingly afforded all of the rights and priveledges therto. ';
+  $form['osg_pmr_email_message'] = array(
+    '#type'         => 'textarea',
+    '#title'        => t('Message (before listing)'),
+    '#description'  =>t('Text of member promotion email'),
+    '#default_value'=>variable_get('osg_pmr_email_message',$default),
+    '#required'     => TRUE,
+  );
+
+  return system_settings_form($form);
+}
+
+
+function osg_pmr_get_roles(){
+  $roles = db_select('role','r')
+  ->fields('r',array('name','rid'))
+  ->execute()
+  ->fetchAllKeyed();
+  return $roles;
+}
+function osg_pmr_action($caption,$uuid){
+
+  $roles      = osg_pmr_get_roles();
+  $pm_role    = variable_get('osg_pmr_pending_member_role','pending member');
+  $uid        = db_query("SELECT uid FROM users WHERE uuid='$uuid'")->fetchField();
+  $user       = user_load($uid);
+  $user_roles = array_flip($user->roles);
+  if(array_key_exists($pm_role,$user_roles)){
+    unset($user_roles[$pm_role]);
+  }
+  if(array_key_exists($caption,$roles)){
+    if(!array_key_exists($caption,$user_roles)){
+      $user_roles[$caption] = $roles[$caption];
+    }
+  }
+  if($user->roles <> array_flip($user_roles)    ){
+    $user->roles = array_flip($user_roles);
+    user_save($user);
+
+  }
+  $member_roles=array_filter((array)variable_get('osg_prm_roles_2b_resolved'));
+  foreach($member_roles as $key => $value){
+    debug(array('value'=>$value,
+        'user_roles'=>$user_roles,
+        'uid'=>$uid,
+      )
+    );
+    if(array_key_exists($value,$user_roles)){
+      osg_pmr_prep_message($user);
+      break;
+    }
+  }
+
+  //drupal_goto( 'pending-members' );
+  osg_pmr_listing();
+}
+function osg_pmr_prep_message($info){
+  global $base_url;
+  //debug($data,'$data');
+  $key     = 'osg_pmr_member_promotion';
+  $message = array();
+  //$separator = md5(time());
+  // carriage return type (we use a PHP end of line constant)
+  //$eol = PHP_EOL;
+  //debug($info);return;
+  ////$params['to'] = $record['email'];
+  $send_mail = TRUE;
+
+  $recipient = osg_api_pop_value($info->field_firstname)
+  .' '
+  .osg_api_pop_value($info->field_lastname)
+  .'<'
+  .$info->mail
+  .'>';
+  drupal_set_message("Mail sent to ".$recipient);
+  $sender    = variable_get('site_mail','admin@example.com');
+
+  $message['subject'] = variable_get('osg_pmr_email_subject','Account Status Message');
+  $body = variable_get('osg_pmr_email_message','Your Account has been updated.');
+
+  //$body = str_replace('[user:mail]',$info['mail'],$body);
+  //$body = str_replace('[user:name]',$info['user_name'],$body);
+
+  $body = token_replace($body);
+
+  $message['body'][] = $body;
+  //$message['headers']['Content-Type'] = 'text/html; charset=UTF-8; format=flowed; delsp=yes';
+  //drupal_mail($module,$key,$to,$language,$params = array(),$from = NULL,$send = TRUE)
+
+  drupal_mail('osg_pmr'
+    ,'osg_pmr_member_promotion'
+    ,$recipient
+    ,language_default()
+    ,$message
+    ,$sender
+    ,$send_mail
+  );
+  //debug(array($recipient,$sender,$send_mail));
+}
+
+function osg_pmr_listing(){
+  $url=variable_get('osg_prm_listing_page');
+  drupal_goto($url);
+}
+
+function osg_pmr_mail($key, &$message, $params){
+  global $user;
+  $options = array(
+    'langcode'=> $message['language']->language,
+  );
+
+
+  // Each message is associated with a language, which may or may not be the
+  // current user's selected language, depending on the type of e-mail being
+  // sent. This $options array is used later in the t() calls for subject
+  // and body to ensure the proper translation takes effect.
+  if($key== 'osg_pmr_member_promotion'){
+
+    $options = array(
+      'langcode' => $message['language']->language,
+    );
+    $message['body'] = $params['body'];
+    $message['subject'] = check_plain($params['subject']);
+    //$message['headers']['Content-Type'] = $params['headers']['Content-Type'] ;
+    $bcc = variable_get('osg_singout_notifier_bcc');
+    if(is_array($bcc)){if(count($bcc)>0){
+        $message['headers']['Bcc'] = implode(',',$bcc);
+      }
+    }
+
+  }
+}

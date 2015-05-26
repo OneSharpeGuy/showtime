@@ -1,0 +1,133 @@
+<?php
+/**
+* Implement hook_schema
+*/
+function osg_singout_notifier_schema()
+{
+	//drupal_set_message('osg_singout_notifier_schema');
+	$schema['osg_singout_notifier_journal'] = array(
+		'description'=> 'TODO: please describe this table!',
+		'fields'      => array(
+			'id'                        => array(
+				'description'=> 'UniqueID',
+				'type'       => 'serial',
+				'not null'   => TRUE,
+			),
+			'uid'                       => array(
+				'description'=> 'User ID',
+				'type'       => 'int',
+				'not null'   => TRUE,
+			),
+			'nid'                       => array(
+				'description'=> 'nid of assoicated singout',
+				'type'       => 'int',
+				'not null'   => TRUE,
+			),
+			'delta'                     => array(
+				'description'=> 'Name of calling function',
+				'type'       => 'varchar',
+				'length'     => '128',
+				'not null'   => TRUE,
+			),
+			'initial_notification_time' => array(
+				'description'=> 'Time initial notification was sent',
+				'type'       => 'int',
+				'not null'   => TRUE,
+			),
+			'last_notification_time'    => array(
+				'description'=> 'Time most recent notification was sent',
+				'type'       => 'int',
+				'not null'   => FALSE,
+			),
+			'email'                     => array(
+				'description'=> 'Address last notification was sent to',
+				'type'       => 'varchar',
+				'length'     => '128',
+				'not null'   => FALSE,
+			),
+			'notification_count'        => array(
+				'description'=> 'Number of times notification was sent on this node',
+				'type'       => 'int',
+				'not null'   => TRUE,
+			),
+		),
+		'primary key' => array('id'),
+	);
+
+	return $schema;
+}
+
+
+/**
+* Implements hook_install().
+*/
+function osg_singout_notifier_install()
+{
+
+
+}
+
+
+/**
+* Implements hook_uninstall().
+*/
+function osg_singout_notifier_uninstall()
+{
+
+
+}
+
+/**
+* Implement hook_enable()
+*/
+function osg_singout_notifier_enable()
+{
+	$schema = osg_singout_notifier_schema();
+	foreach($schema as $key => $table)
+	{
+		drupal_set_message($key. ' schema updated.');
+	}
+	osg_singout_notifier_populate_journal();
+}
+
+
+/**
+* Polpulate the journal, from the log, if log is available
+*/
+function osg_singout_notifier_populate_journal()
+{
+
+	if(db_table_exists('osg_singout_notifier_log'))
+	{
+		$sql = "INSERT INTO osg_singout_notifier_journal ";
+		$sql = $sql ."(uid ";
+		$sql = $sql .", nid ";
+		$sql = $sql .", delta ";
+		$sql = $sql .", initial_notification_time ";
+		$sql = $sql .", last_notification_time ";
+		$sql = $sql .", notification_count) ";
+		$sql = $sql ." ";
+		$sql = $sql ."SELECT l.uid ";
+		$sql = $sql .", l.nid ";
+		$sql = $sql .", l.delta ";
+		$sql = $sql .", MIN(notification_time) ";
+		$sql = $sql .", MAX(notification_time) ";
+		$sql = $sql .", COUNT(* ) ";
+		$sql = $sql ."FROM osg_singout_notifier_log l ";
+		$sql = $sql ."LEFT JOIN osg_singout_notifier_journal j ";
+		$sql = $sql ."ON l.uid = j.uid ";
+		$sql = $sql ."AND l.nid = j.nid ";
+		$sql = $sql ."WHERE j.id IS NULL ";
+		$sql = $sql ."GROUP BY l.uid ";
+		$sql = $sql .", l.nid ";
+		$sql = $sql .", l.delta ";
+		db_query($sql);
+		db_drop_table('osg_singout_notifier_log') ;
+
+
+	}
+	$sql = "UPDATE osg_singout_notifier_journal j ";
+	$sql = $sql ."INNER JOIN users u ON u.uid=j.uid SET j.email=u.mail ";
+	$sql = $sql ."WHERE email IS NULL AND mail IS NOT NULL ";
+	db_query($sql);
+}

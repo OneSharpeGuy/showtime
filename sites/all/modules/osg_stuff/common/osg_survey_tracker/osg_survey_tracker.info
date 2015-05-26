@@ -1,0 +1,8 @@
+name = Survey Tracker
+description = Note who has clicked the link to take the survey
+core = 7.x
+package = Chuck Sharpe - Custom Mods
+
+
+; NEW LINE
+configure = admin/config/osg_survey_tracker

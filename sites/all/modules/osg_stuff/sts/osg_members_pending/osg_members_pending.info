@@ -1,0 +1,6 @@
+name = Members Pending
+description = Check to see if members are pending and text somebody
+package = Chuck Sharpe - Custom Mods
+core = 7.x
+
+configure =admin/config/singout/osg/osg_members_pending

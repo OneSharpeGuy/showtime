@@ -1,0 +1,40 @@
+<?php //
+/**
+ * @author Charles Sharpe
+ * @copyright 2013
+ */
+
+/**
+ * Implements hook_uninstall
+ *  
+ */
+
+function fb_thumbnail_uninstall()
+{
+    variable_del('fb_thumbnail_output_prop_values');
+    variable_del('fb_thumbnail_output_prop_captions');
+}
+/**
+ * Implements hook_install()
+ * 
+ */
+function fb_thumbnail_install()
+{
+    $og_values = array(
+        1 => 'og:site_name',
+        2 => 'og:title',
+        3 => 'og:description',
+        4 => 'og:type',
+        5 => 'og:url',
+        6 => 'og:image',
+        );
+    $og_captions = array();
+    foreach ($og_values as $key => $values)
+    {
+        $og_captions[$values] = $values;
+    }
+    variable_del('fb_thumbnail_output_prop_captions');
+    variable_del('fb_thumbnail_output_prop_values');
+    variable_set('fb_thumbnail_output_prop_captions', $og_captions);
+    variable_set('fb_thumbnail_output_prop_values', $og_values);
+}

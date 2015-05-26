@@ -1,0 +1,80 @@
+<?php
+/**
+* @file osg_singout_node_display.module
+* TODO: Enter file description here.
+*/
+
+
+/**
+* Implements hook_menu().
+*/
+function osg_singout_node_display_menu() {
+  $items['osg_singout_node_display'] = array(
+    'title'           => 'Singout Node Display Page',
+    'page callback'   => 'osg_singout_node_display',
+    'access arguments' => array('access content'),
+    'type'            => MENU_SUGGESTED_ITEM,
+  );
+  return $items;
+}
+
+/**
+* Implements hook_theme_registry_alter()
+**/
+function osg_singout_node_display_theme_registry_alter( & $theme_registry) {
+  $mod_path            = drupal_get_path('module', 'osg_singout_node_display');
+  $theme_registry_copy = $theme_registry;       // munge on a copy
+  _theme_process_registry($theme_registry_copy, 'phptemplate', 'theme_engine', 'pow', $mod_path);
+  $theme_registry += array_diff_key($theme_registry_copy, $theme_registry);
+  $hooks = array('node');
+  foreach ($hooks as $h) {
+    _osg_singout_node_display_insert_after_first_element($theme_registry[$h]['theme paths'], $mod_path);
+  }
+}
+
+/**
+* Helper function for re-ordering arrays (needed by theme_registry_alter)
+*/
+function _osg_singout_node_display_insert_after_first_element( & $a, $element) {
+  if (is_array($a)) {
+    $first_element = array_shift($a);
+    array_unshift($a, $first_element, $element);
+  }
+}
+
+function osg_singout_node_display_node_view_alter( & $build) {
+  //dbug($build);//debug($build);
+  $is_front = variable_get('site_front_page','node') == current_path();
+  if ($is_front) {
+    if (isset($build['#node'])) {
+      if (isset($build['#node']->field_when)) {
+      	
+        $elap = floor((osg_api_start_of_day(
+              osg_api_get_flat_field('node',$build['#node'],'field_when')
+            ) - osg_api_start_of_day(time())) / 86400);
+
+        if ($elap >= 0) {
+          switch ($elap) {
+            case 0:
+            $blurb = "Today";
+            break;
+            case 1:
+            $blurb = "Tomorrow";
+            break;
+            default:
+            $blurb = "$elap days away";
+
+            break;
+          }
+
+          if (isset($build['#node']->title)) {
+            $build['#node']->title .= " ($blurb)";
+          }
+
+        }
+      }
+    }
+  }
+  //dbug($build);
+
+}
