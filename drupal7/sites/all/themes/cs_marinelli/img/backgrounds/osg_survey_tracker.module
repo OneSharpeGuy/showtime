@@ -1,0 +1,351 @@
+<?php
+
+/**
+ * @file
+ * Module file for osg_survey_tracker
+ */
+/**
+ * Implements hook_menu().
+ *
+ * Provides a default page to explain what this module does.
+ */
+function osg_survey_tracker_block_menu()
+{
+    $items['osg/survey_tracker/push'] = array(
+
+        // A type of MENU_CALLBACK means leave the path completely out of the menu
+        // links.
+        'type' => MENU_CALLBACK,
+
+        // The title is still used for the page title, even though it's not used
+        // for the menu link text, since there's no menu link.
+        'title' => 'Callback Only',
+
+        'page callback' => 'osg_survey_tracker_clicked',
+
+        );
+    /*
+
+    $items['admin/config/osg/survey_tracker'] = array(
+    'type'           => MENU_NORMAL_ITEM,
+    'title'          => 'OSG Survey Tracker Setttings',
+    'page callback'  => 'drupal_get_form',
+    'page arguments'  => array('osg_survey_tracker_settings_form'),
+    'access callback'=> TRUE,
+    );
+    */
+
+    return $items;
+}
+
+/**
+ *
+ * Implements hook_block_info()
+ *
+ * Define all blocks provided by the module.
+ *
+ * This hook declares to Drupal what blocks are provided by your module and can
+ * optionally specify initial block configuration settings.
+ *
+ * In hook_block_info(), each block your module provides is given a unique
+ * identifier referred to as "delta" (the array key in the return value). Delta
+ * values only need to be unique within your module, and they are used in the
+ * following ways:
+ * - Passed into the other block hooks in your module as an argument to identify
+ *   the block being configured or viewed.
+ * - Used to construct the default HTML ID of "block-MODULE-DELTA" applied to
+ *   each block when it is rendered. This ID may then be used for CSS styling or
+ *   JavaScript programming.
+ * - Used to define a theming template suggestion of block__MODULE__DELTA, for
+ *   advanced theming possibilities.
+ * - Used by other modules to identify your block in hook_block_info_alter() and
+ *   other alter hooks.
+ * The values of delta can be strings or numbers, but because of the uses above
+ * it is preferable to use descriptive strings whenever possible, and only use a
+ * numeric identifier if you have to (for instance if your module allows users
+ * to create several similar blocks that you identify within your module code
+ * with numeric IDs). The maximum length for delta values is 32 bytes.
+ *
+ * @return
+ *   An associative array whose keys define the delta for each block and whose
+ *   values contain the block descriptions. Each block description is itself an
+ *   associative array, with the following key-value pairs:
+ *   - info: (required) The human-readable administrative name of the block.
+ *     This is used to identify the block on administration screens, and is not
+ *     displayed to non-administrative users.
+ *   - cache: (optional) A bitmask describing what kind of caching is
+ *     appropriate for the block. Drupal provides the following bitmask
+ *     constants for defining cache granularity:
+ *     - DRUPAL_CACHE_PER_ROLE (default): The block can change depending on the
+ *       roles the user viewing the page belongs to.
+ *     - DRUPAL_CACHE_PER_USER: The block can change depending on the user
+ *       viewing the page. This setting can be resource-consuming for sites with
+ *       large number of users, and should only be used when
+ *       DRUPAL_CACHE_PER_ROLE is not sufficient.
+ *     - DRUPAL_CACHE_PER_PAGE: The block can change depending on the page being
+ *       viewed.
+ *     - DRUPAL_CACHE_GLOBAL: The block is the same for every user on every page
+ *       where it is visible.
+ *     - DRUPAL_CACHE_CUSTOM: The module implements its own caching system.
+ *     - DRUPAL_NO_CACHE: The block should not get cached.
+ *   - properties: (optional) Array of additional metadata to add to the block.
+ *     Common properties include:
+ *     - administrative: Boolean that categorizes this block as usable in an
+ *       administrative context. This might include blocks that help an
+ *       administrator approve/deny comments, or view recently created user
+ *       accounts.
+ *   - weight: (optional) Initial value for the ordering weight of this block.
+ *     Most modules do not provide an initial value, and any value provided can
+ *     be modified by a user on the block configuration screen.
+ *   - status: (optional) Initial value for block enabled status. (1 = enabled,
+ *     0 = disabled). Most modules do not provide an initial value, and any
+ *     value provided can be modified by a user on the block configuration
+ *     screen.
+ *   - region: (optional) Initial value for theme region within which this
+ *     block is set. Most modules do not provide an initial value, and any value
+ *     provided can be modified by a user on the block configuration screen.
+ *     Note: If you set a region that isn't available in the currently enabled
+ *     theme, the block will be disabled.
+ *   - visibility: (optional) Initial value for the visibility flag, which tells
+ *     how to interpret the 'pages' value. Possible values are:
+ *     - BLOCK_VISIBILITY_NOTLISTED: Show on all pages except listed pages.
+ *       'pages' lists the paths where the block should not be shown.
+ *     - BLOCK_VISIBILITY_LISTED: Show only on listed pages. 'pages' lists the
+ *       paths where the block should be shown.
+ *     - BLOCK_VISIBILITY_PHP: Use custom PHP code to determine visibility.
+ *       'pages' gives the PHP code to use.
+ *     Most modules do not provide an initial value for 'visibility' or 'pages',
+ *     and any value provided can be modified by a user on the block
+ *     configuration screen.
+ *   - pages: (optional) See 'visibility' above. A string that contains one or
+ *     more page paths separated by '\n', '\r', or '\r\n' when 'visibility' is
+ *     set to BLOCK_VISIBILITY_NOTLISTED or BLOCK_VISIBILITY_LISTED, or custom
+ *     PHP code when 'visibility' is set to BLOCK_VISIBILITY_PHP. Paths may use
+ *     '*' as a wildcard (matching any number of characters); '<front>'
+ *     designates the site's front page. For BLOCK_VISIBILITY_PHP, the PHP
+ *     code's return value should be TRUE if the block is to be made visible or
+ *     FALSE if the block should not be visible.
+ *
+ * For a detailed usage example, see block_example.module.
+ *
+ * @see hook_block_configure()
+ * @see hook_block_save()
+ * @see hook_block_view()
+ * @see hook_block_info_alter()
+ */
+
+function osg_survey_tracker_block_info()
+{
+    $blocks['alpha'] = array(
+        // info: The name of the block.
+        'info' => t('OSG: Survey Tracker'),
+        'status' => true,
+        'region' => 'over_node',
+        'pages' => '<front>' // Not usually provided.
+            );
+    return $blocks;
+}
+
+/**
+ *
+ * Implements hook_block_view()
+ *
+ * Return a rendered or renderable view of a block.
+ *
+ * @param $delta
+ *   Which block to render. This is a unique identifier for the block
+ *   within the module, defined in hook_block_info().
+ *
+ * @return
+ *   Either an empty array so the block will not be shown or an array containing
+ *   the following elements:
+ *   - subject: The default localized title of the block. If the block does not
+ *     have a default title, this should be set to NULL.
+ *   - content: The content of the block's body. This may be a renderable array
+ *     (preferable) or a string containing rendered HTML content. If the content
+ *     is empty the block will not be shown.
+ *
+ * For a detailed usage example, see block_example.module.
+ *
+ * @see hook_block_info()
+ * @see hook_block_view_alter()
+ * @see hook_block_view_MODULE_DELTA_alter()
+ */
+
+function osg_survey_tracker_block_view($delta = 'alpha')
+{
+    global $user;
+    $block = array();
+    $peeps = variable_get('osg_survey_tracker_respondents');
+    $show = true;
+
+    if (is_array($peeps))
+    {
+        if (in_array($user->name, $peeps))
+        {
+            $show = false;
+        }
+    }
+    if ($show)
+    {
+        $block['content'] = drupal_render(drupal_get_form('_build_my_form'));
+    }
+
+
+    return $block;
+}
+function osg_survey_tracker_clicked()
+{
+    global $user;
+    $peeps = variable_get('osg_survey_tracker_respondents', array());
+
+    $display_name = "";
+    if (!in_array($user->name, $peeps))
+    {
+        $peeps[] = $user->name;
+        variable_set('osg_survey_tracker_respondents', $peeps);
+    }
+    $local_user = user_load($user->uid);
+    if (!empty($local_user->field_firstname['und'][0]['safe_value']))
+    {
+        $display_name = $local_user->field_firstname['und'][0]['safe_value'];
+    }
+    if (!empty($local_user->field_lastname['und'][0]['safe_value']))
+    {
+        if ($display_name <> '')
+        {
+            $display_name = $display_name . ' ';
+        }
+        $display_name = $display_name . ' ' . $local_user->field_lastname['und'][0]['safe_value'];
+    }
+
+    $url = variable_get('osg_survey_tracker_url', '<front>');
+    $name_field = variable_get('osg_survey_tracker_name_field');
+    if (!empty($name_field))
+    {
+        if (!empty($display_name))
+        {
+            $url = "$url?$name_field=$display$display_name";
+        }
+    }
+    /**
+ * new dbug(array(
+ *         'peeps' => $peeps,
+ *         'display_name' => $display_name,
+ *         'name_field' => $name_field,
+ *         'url' => $url));
+ *     
+ *///drupal_goto('<front>');
+
+    drupal_goto($url);
+
+}
+function _build_my_form($form, &$form_state)
+{
+    $lines = array();
+    $lines[] = '<b>We are in the process of making plans for our Williamsburg visit in April 2015.</b>';
+    $lines[] = '';
+    $lines[] = 'We value your feedback, and would appreciate if you took a few moments to respond to some questions.';
+    $value = variable_get('osg_survey_tracker_message', join($lines, '<br/>'));
+    $form['blurb'] = array(
+        '#type' => 'markup',
+        '#markup' => "<p>" . $value . "</p>",
+        );
+    $form['survey'] = array(
+        '#type' => 'submit',
+        '#value' => t('Click here to take the survey'),
+        '#submit' => array('osg_survey_tracker_clicked'),
+        );
+
+    return $form;
+}
+/**
+ * }
+ * /**
+ *  * Settings Form
+ *  *
+ * function osg_survey_tracker_settings_form($form, &$form_state)
+ * {
+ *     $form['osg_survey_tracker_message'] = array(
+ *         '#type' => 'textarea',
+ *         '#title' => t('Message'),
+ *         '#default_value' => variable_get('osg_survey_tracker_message', array(
+ *             '<b>We are in the process of making plans for our Williamsburg visit in April 2015.</b>',
+ *             '',
+ *             'We value your feedback, and would appreciate if you took a few moments to respond to some questions.')),
+ *         );
+ *     $form['osg_survey_tracker_url'] = array(
+ *         '#type' => 'textfield',
+ *         '#title' => t('URL'),
+ *         '#description' => t('Web address of actual survey'),
+
+ *         '#default_value' => variable_get('osg_survey_tracker_url',
+ *             'http://goo.gl/forms/CjdpL2Oblg'),
+ *         );
+ *     return system_settings_form($form);
+ * }
+ */
+
+/**
+ * Implements hook_block_configure().
+ */
+function osg_survey_tracker_block_configure($delta = '')
+{
+    // This example comes from node.module.
+    $form = array();
+    if ($delta == 'alpha')
+    {
+        $form['osg_survey_tracker_message'] = array(
+            '#type' => 'textarea',
+            '#title' => t('Message'),
+            '#default_value' => variable_get('osg_survey_tracker_message',
+                '<b>We are in the process of making plans for our Williamsburg visit in April 2015.</b><br/><br/>We value your feedback, and would appreciate if you took a few moments to respond to some questions.'),
+            '#weight' => 10,
+            );
+        $form['osg_survey_tracker_url'] = array(
+            '#type' => 'textfield',
+            '#title' => t('URL'),
+            '#description' => t('Web address of actual survey'),
+
+            '#default_value' => variable_get('osg_survey_tracker_url',
+                'http://goo.gl/forms/CjdpL2Oblg'),
+            '#weight' => 20,
+            );
+        $defuault = variable_get('osg_survey_tracker_respondents', array());
+        debug($defuault);
+        $defuault = join("<br/>", $defuault);
+        debug($defuault);
+        $form['osg_survey_tracker_respondents'] = array(
+            '#type' => 'textarea',
+            '#title' => t('Respondents'),
+            '#default_value' => $defuault,
+            '#weight' => 90,
+
+            );
+        $form['osg_survey_tracker_name_field'] = array(
+            '#type' => 'textfield',
+            '#title' => t('Name Field'),
+            '#description' => t("Field to be populated with user's name"),
+
+            '#default_value' => variable_get('osg_survey_tracker_name_field'),
+            '#weight' => 30,
+            );
+
+    }
+    return $form;
+}
+
+/**
+ * Implements hook_block_save().
+ */
+function osg_survey_tracker_block_save($delta = '', $edit = array())
+{
+    // This example comes from node.module.
+    if ($delta == 'alpha')
+    {
+        variable_set('osg_survey_tracker_message', $edit['osg_survey_tracker_message']);
+        variable_set('osg_survey_tracker_url', $edit['osg_survey_tracker_url']);
+        variable_set('osg_survey_tracker_name_field', $edit['osg_survey_tracker_name_field']);        
+        variable_set('osg_survey_tracker_respondents', explode('<br/>',$edit['osg_survey_tracker_respondents']));
+    }
+}
