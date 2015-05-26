@@ -1,0 +1,26 @@
+<?php
+/**
+ * @author Charles Sharpe
+ * @copyright 2013
+ */
+/**
+ * Create new database table {osg_spammers}.
+ */
+function osg_spammer_schema() {
+    $fields = osg_spammer_fields();
+    $schema['osg_spammers'] = array(
+        // table definition array goes here
+        'description' => 'Hosts that continually access the website, Suspected Spammers or Bots',
+        'fields' => $fields['osg_spammers'],
+        'primary key' => array('id'),
+        );
+    $ret = array();
+    return $schema;
+}
+/**
+ * Implement hook_enable()
+ */
+function osg_spammer_enable() {
+    drupal_set_message('osg_spammer_enable firing');
+    osg_spammer_column_sync('osg_spammers');
+}

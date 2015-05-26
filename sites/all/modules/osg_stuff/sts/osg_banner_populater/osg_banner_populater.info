@@ -1,0 +1,8 @@
+name = Banner Populater
+description = Reads folder and Populates Marinelli Banner
+core = 7.x
+package = Chuck Sharpe - Custom Mods
+
+
+; NEW LINE
+configure = admin/config/osg_banner_populater

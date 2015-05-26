@@ -1,0 +1,429 @@
+<?php
+
+/**
+* @file osg_singout_support.module
+* TODO: Enter file description here.
+*/
+require_once 'osg_voice_part_summary.inc';
+
+/**
+* Implements hook_user_delete()
+*
+* Respond to user deletion.
+*
+* This hook is invoked from user_delete_multiple() before field_attach_delete()
+* is called and before users are actually removed from the database.
+*
+* Modules should additionally implement hook_user_cancel() to process stored
+* user data for other account cancellation methods.
+*
+* @param $account
+*   The account that is being deleted.
+*
+* @see user_delete_multiple()
+*/
+function osg_singout_support_user_delete($account)
+{
+	$result = db_delete('osg_users')->condition('uid', $account->uid)->execute();
+
+	db_delete('osg_registration_ext')->condition('uid', $account->uid)->execute();
+}
+
+/**
+* Implements hook_user_update()
+*
+* A user account was updated.
+*
+* Modules may use this hook to update their user data in a custom storage
+* after a user account has been updated.
+*
+* @param $edit
+*   The array of form values submitted by the user.
+* @param $account
+*   The user object on which the operation is performed.
+* @param $category
+*   The active category of user information being edited.
+*
+* @see hook_user_presave()
+* @see hook_user_insert()
+*/
+
+function osg_singout_support_user_update( & $edit, $account, $category)
+{
+	$result = osg_singout_support_user_expound($account->uid);
+	$record = $result->fetchAssoc();
+	$fields = array();
+	$key = array();
+	foreach($record as $key_name => $value){
+		if($key_name == 'uid'){
+			$key[$key_name] = $value;
+		}
+		else
+		{
+			$fields[$key_name] = $value;
+		}
+	}
+	db_merge('osg_users')->key($key)->fields($fields)->execute();
+
+	$key_fields = array('uid'=> $account->uid);
+	osg_singout_support_osg_registration_ext_add_rows($key_fields);
+}
+
+/**
+* Builds the osg_user record from standard database fields
+*
+* @param int $uid
+*
+* @return
+*/
+function osg_singout_support_user_expound($uid = null)
+{
+	$sql = "
+	SELECT u.uid,
+	u.name AS user_name,
+	f.field_firstname_value AS first_name,
+	l.field_lastname_value AS last_name,
+	u.mail,
+	d.name AS voice_part,
+	d.tid,
+	IFNULL(m.hit,0) AS is_member,
+	CASE IFNULL(NULLIF(d.name,'N/A'),'')
+	WHEN ''THEN 0
+	ELSE IFNULL(n.hit,1)
+	END AS is_singer,
+	CASE u.uid
+	WHEN 1 THEN 1
+	ELSE IFNULL(a.hit,0)
+	END AS is_admin
+	FROM users u
+	LEFT JOIN field_data_field_voice_part p ON u.uid = p.entity_id
+	LEFT JOIN taxonomy_term_data d ON d.tid = p.field_voice_part_tid
+	LEFT JOIN field_data_field_firstname f ON f.entity_id=u.uid
+	LEFT JOIN field_data_field_lastname l ON l.entity_id=u.uid
+	LEFT JOIN
+	(SELECT a.uid,
+	1 AS hit
+	FROM `role` b
+	INNER JOIN users_roles a ON a.rid=b.rid
+	WHERE b.name='member') m ON u.uid=m.uid
+	LEFT JOIN
+	(SELECT a.uid,
+	0 AS hit
+	FROM `role` b
+	INNER JOIN users_roles a ON a.rid=b.rid
+	WHERE b.name='non singer') n ON u.uid=n.uid
+	LEFT JOIN
+	(SELECT a.uid,
+	1 AS hit
+	FROM `role` b
+	INNER JOIN users_roles a ON (a.rid=b.rid)
+	WHERE b.name='administrator') a ON u.uid=a.uid
+	";
+	if(is_numeric($uid)){
+		$sql = $sql . " WHERE u.uid=$uid ";
+	}
+	$result = db_query($sql);
+	return $result;
+}
+function osg_singout_support_reset_table_osg_user()
+{
+	$result = db_delete('osg_users')->execute();
+
+	$result = osg_singout_support_user_expound();
+
+	while($record = $result->fetchAssoc()){
+
+		$fields = array();
+		$key = array();
+		foreach($record as $key_name => $value){
+
+			if($key_name == 'uid'){
+				$key[$key_name] = $value;
+			}
+			else
+			{
+				$fields[$key_name] = $value;
+			}
+		}
+
+		db_merge('osg_users')->key($key)->fields($fields)->execute();
+	}
+}
+function osg_singout_support_reset_table_osg_registration_ext()
+{
+	if(db_table_exists('osg_registration_ext'))
+	{
+		$result = db_truncate('osg_registration_ext')->execute();
+	}
+	if(db_table_exists('osg_voice_part_summary'))
+	{
+		$result = db_truncate('osg_voice_part_summary')->execute();
+	}
+
+	osg_singout_support_osg_registration_ext_add_rows();
+	//osg_singout_support_osg_voicepart_summary();
+}
+
+/**
+* Implements hook_form_FORM_ID_alter()
+*
+* Provide a form-specific alteration instead of the global hook_form_alter().
+*
+* Modules can implement hook_form_FORM_ID_alter() to modify a specific form,
+* rather than implementing hook_form_alter() and checking the form ID, or
+* using long switch statements to alter multiple forms.
+*
+* Form alter hooks are called in the following order: hook_form_alter(),
+* hook_form_BASE_FORM_ID_alter(), hook_form_FORM_ID_alter(). See
+* hook_form_alter() for more details.
+*
+* @param $form
+*   Nested array of form elements that comprise the form.
+* @param $form_state
+*   A keyed array containing the current state of the form. The arguments
+*   that drupal_get_form() was originally called with are available in the
+*   array $form_state['build_info']['args'].
+* @param $form_id
+*   String representing the name of the form itself. Typically this is the
+*   name of the function that generated the form.
+*
+* @see hook_form_alter()
+* @see hook_form_BASE_FORM_ID_alter()
+* @see drupal_prepare_form()
+* @see forms_api_reference.html
+*/
+function osg_singout_support_form_registration_form_alter( & $form, & $form_state,
+	$form_id)
+{
+	$form['#submit'][] = 'osg_singout_support_process_registration';
+}
+function osg_singout_support_form_registration_delete_confirm_alter( & $form, & $form_state,
+	$form_id)
+{
+
+	$form['#submit'][] = 'osg_singout_support_delete_registration';
+}
+function osg_singout_support_process_registration( & $form, & $form_state)
+{
+	//debug($form,'$form');
+	//debug($form_state,'$form_state');
+	$registration = $form_state['registration'];
+	//debug($registration);
+	$key_fields   = array('registration_id'=> $registration->registration_id);
+	$result = _prep_rowset_osg_registration_ext($key_fields);
+	$record = $result->fetchAssoc();
+	if($record){
+
+
+		foreach($record as $key => $value){
+			if(!(($key == 'uid') || ($key == 'nid'))){
+				$fields[$key] = $value;
+			}
+		}
+		$query = db_update('osg_registration_ext');
+
+		$query->fields($fields);
+		$query->condition('uid',$record['uid']);
+		$query->condition('nid',$record['nid']);
+		$query->execute();
+
+		// osg_singout_support_osg_registration_ext_add_rows($key_fields);
+		
+		osg_singout_support_osg_voicepart_summary(array('nid'=>$record['nid']));
+	}
+}
+function osg_singout_support_delete_registration( & $form, & $form_state)
+{
+	//debug($form,'$form');
+	//debug($form_state,'$form_state');
+	//  $registration = $form_state['registration'];
+	//  db_delete('osg_registration_ext')
+	//  ->condition('registration_id', $registration->registration_id)
+	//  ->execute();
+	osg_singout_summary_clean_up_osg_registration_ext();
+}
+function osg_singout_support_osg_registration_ext_add_rows($key_fields = array())
+{
+
+	$result = _prep_rowset_osg_registration_ext($key_fields);
+	while($record = $result->fetchAssoc()){
+		$key_fields = array();
+		$fields = array();
+
+		foreach($record as $key_name => $value){
+			if(($key_name == 'uid') || ($key_name == 'nid')){
+				$key_fields[$key_name] = $value;
+			}
+			$fields[$key_name] = $value;
+
+		}
+		$fields['tstamp'] = time();
+		//  debug($record);
+		//  debug($key_fields,'$key_fields');
+		//debug($fields,'$fields');
+		//drupal_set_message($sql);
+		$query = db_merge('osg_registration_ext');
+		$query->key($key_fields);
+		$query->fields($fields);
+		//drupal_set_message((string )$query);
+		$query->execute();
+		osg_singout_support_osg_voicepart_summary(array('nid'=>$record['nid']));
+	}
+
+}
+
+/**
+* Implements hook_node_update()
+*
+* Respond to updates to a node.
+*
+* This hook is invoked from node_save() after the database query that will
+* update node in the node table is scheduled for execution, after the
+* type-specific hook_update() is invoked, and after field_attach_update() is
+* called.
+*
+* Note that when this hook is invoked, the changes have not yet been written to
+* the database, because a database transaction is still in progress. The
+* transaction is not finalized until the save operation is entirely completed
+* and node_save() goes out of scope. You should not rely on data in the
+* database at this time as it is not updated yet. You should also note that any
+* write/update database queries executed from this hook are also not committed
+* immediately. Check node_save() and db_transaction() for more info.
+*
+* @param $node
+*   The node that is being updated.
+*
+* @ingroup node_api_hooks
+*/
+function osg_singout_support_node_update($node)
+{
+	$key_fields = array('nid'=> $node->nid);
+	osg_singout_support_osg_registration_ext_add_rows($key_fields);
+}
+
+///**
+//*
+//* Implements hook_node_delete()
+//*
+//* Respond to node deletion.
+//*
+//* This hook is invoked from node_delete_multiple() after the type - specific
+//* hook_delete() has been invoked, but before hook_entity_delete and
+//* field_attach_delete() are called, and before the node is removed from the
+//* node table in the database.
+//*
+//* @param $node
+//*   The node that is being deleted.
+//*
+//* @ingroup node_api_hooks
+//*/
+//function osg_singout_support_node_delete($node) {
+//  osg_singout_summary_clean_up_osg_registration_ext();
+//}
+/**
+* This function removes any rows from osg_registration_ext
+* where user or originating node no longer exist
+*
+* @return
+*/
+function osg_singout_summary_clean_up_osg_registration_ext()
+{
+	osg_singout_support_reset_table_osg_registration_ext();
+}
+
+/**
+*
+* Implements hook_node_validate()
+*
+* Perform node validation before a node is created or updated.
+*
+* This hook is invoked from node_validate(), after a user has has finished
+* editing the node and is previewing or submitting it. It is invoked at the
+* end of all the standard validation steps, and after the type-specific
+* hook_validate() is invoked.
+*
+* To indicate a validation error, use form_set_error().
+*
+* Note: Changes made to the $node object within your hook implementation will
+* have no effect.  The preferred method to change a node's content is to use
+* hook_node_presave() instead. If it is really necessary to change the node at
+* the validate stage, you can use form_set_value().
+*
+* @param $node
+*   The node being validated.
+* @param $form
+*   The form being used to edit the node.
+* @param $form_state
+*   The form state array.
+*
+* @ingroup node_api_hooks
+*/
+function osg_singout_support_node_validate($node, $form, & $form_state)
+{
+	$key_fields = array('nid'=> $node->nid);
+	osg_singout_support_osg_registration_ext_add_rows($key_fields);
+}
+function _prep_rowset_osg_registration_ext($key_fields = array())
+{
+	$result = NULL;
+	if(db_table_exists('osg_ical_imported'))
+	{
+		if(db_table_exists('osg_users'))
+		{
+			$sql      = "
+			SELECT
+			i.nid,
+			u.uid,
+			r.`count` AS item_count,
+			r.state,
+			CASE IFNULL(r.state, '')
+			WHEN 'yes' THEN 1 ELSE 0
+			END AS state_yes,
+			CASE IFNULL(r.state, '')
+			WHEN 'no' THEN 1 ELSE 0
+			END AS state_no,
+			CASE IFNULL(r.state, '')
+			WHEN 'maybe' THEN 1 ELSE 0
+			END AS state_maybe,
+			CASE IFNULL(r.state, '')
+			WHEN 'probably_not' THEN 1 ELSE 0
+			END AS state_unlikely,
+			CASE IFNULL(r.state, '')
+			WHEN '' THEN 1 ELSE 0
+			END AS unregistered,
+			u.voice_part
+			FROM osg_ical_imported i
+			CROSS
+			JOIN osg_users u
+			ON u.is_singer = 1 AND i.available = 1
+			LEFT JOIN taxonomy_term_data d
+			ON u.tid = d.tid
+			LEFT JOIN registration r
+			ON u.uid = r.user_uid AND i.nid = r.entity_id
+			";
+			$p_fields = array();
+			if(count($key_fields) > 0){
+
+				$extra = 'WHERE ';
+				foreach($key_fields as $key => $value){
+					$p_key = ':' . $key;
+					$p_fields[$p_key] = $value;
+					$sql   = $sql . " $extra $key = :$key ";
+					$extra = ' AND ';
+				}
+
+			}
+			$sql = $sql . " ORDER BY i.nid,u.uid ";
+			//drupal_set_message($sql);
+			//drupal_set_message(var_export($p_fields,TRUE));
+			if(count($p_fields) > 0){
+				$result = db_query($sql, $p_fields);
+			}
+			else
+			{
+				$result = db_query($sql);
+			}
+		}
+	}
+	return $result;
+}

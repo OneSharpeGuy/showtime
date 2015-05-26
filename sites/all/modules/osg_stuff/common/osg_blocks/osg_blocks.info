@@ -1,0 +1,6 @@
+name = Chuck's Blocks
+description = The Cool blocks concieved by Chuck
+package = Chuck Sharpe - Custom Mods
+core = 7.x
+dependencies[] = block
+dependencies[] = statistics

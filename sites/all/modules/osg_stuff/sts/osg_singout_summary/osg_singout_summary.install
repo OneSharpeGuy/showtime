@@ -1,0 +1,153 @@
+<?php
+/**
+* @file 
+* Install, update and uninstall functions for the osg_singout_summary module.
+*/
+
+
+/**
+* Implements hook_install().
+*/
+function osg_singout_summary_install() {
+
+
+
+drupal_set_message('osg_singout_summary_install');
+
+
+}
+
+
+/**
+* Implements hook_uninstall().
+*/
+function osg_singout_summary_uninstall() {
+
+
+
+drupal_set_message('osg_singout_summary_uninstall');
+
+
+}
+
+/**
+ *
+ * Implements hook_schema()
+ *
+ * Define the current version of the database schema.
+ *
+ * A Drupal schema definition is an array structure representing one or
+ * more tables and their related keys and indexes. A schema is defined by
+ * hook_schema() which must live in your module's .install file.
+ *
+ * This hook is called at install and uninstall time, and in the latter
+ * case, it cannot rely on the .module file being loaded or hooks being known.
+ * If the .module file is needed, it may be loaded with drupal_load().
+ *
+ * The tables declared by this hook will be automatically created when
+ * the module is first enabled, and removed when the module is uninstalled.
+ * This happens before hook_install() is invoked, and after hook_uninstall()
+ * is invoked, respectively.
+ *
+ * By declaring the tables used by your module via an implementation of
+ * hook_schema(), these tables will be available on all supported database
+ * engines. You don't have to deal with the different SQL dialects for table
+ * creation and alteration of the supported database engines.
+ *
+ * See the Schema API Handbook at http://drupal.org/node/146843 for
+ * details on schema definition structures.
+ *
+ * @return
+ *   A schema definition structure array. For each element of the
+ *   array, the key is a table name and the value is a table structure
+ *   definition.
+ *
+ * @ingroup schemaapi
+ */
+
+function osg_singout_summary_schema() {
+
+//drupal_set_message('hook_schema');
+$schema['osg_singout_summary'] = array(
+  'description' => 'Summarized view of registration activity',
+  'fields' => array(
+    'line_nbr' => array(
+      'description' => 'TODO: please describe this field!',
+      'type' => 'serial',
+      'not null' => TRUE,
+    ),
+    'nid' => array(
+      'description' => 'Node ID',
+      'type' => 'int',
+      'not null' => TRUE,
+    ),
+    'tid' => array(
+      'description' => 'Taxonomy ID',
+      'type' => 'int',
+      'not null' => TRUE,
+    ),
+    'weight' => array(
+      'description' => 'Taxonomy Weight',
+      'type' => 'int',
+      'not null' => TRUE,
+    ),
+    'yes_count' => array(
+      'description' => 'Count of Members responding yes',
+      'type' => 'int',
+      'not null' => FALSE,
+    ),
+    'no_count' => array(
+      'description' => 'Count of members responding no',
+      'type' => 'int',
+      'not null' => FALSE,
+    ),
+    'maybe_count' => array(
+      'description' => 'Count of members responding maybe',
+      'type' => 'int',
+      'not null' => FALSE,
+    ),
+    'unlikely_count' => array(
+      'description' => 'Count of members responding unlikely',
+      'type' => 'int',
+      'not null' => FALSE,
+    ),
+    'responses' => array(
+      'description' => 'Count of total responses',
+      'type' => 'int',
+      'not null' => FALSE,
+    ),
+    'unregistered' => array(
+      'description' => 'Count of registered users not responding',
+      'type' => 'int',
+      'not null' => FALSE,
+    ),
+    'eligible' => array(
+      'description' => 'Number of users eligible to resond to this event',
+      'type' => 'int',
+      'not null' => FALSE,
+    ),
+    'pct_yes' => array(
+      'description' => 'Percent of members responding yes',
+      'type' => 'int',
+      'not null' => FALSE,
+    ),
+    'pct_no' => array(
+      'description' => 'Percent of members responding no',
+      'type' => 'int',
+      'not null' => FALSE,
+    ),
+    'pct_limbo' => array(
+      'description' => 'Percent of members yet undecided',
+      'type' => 'int',
+      'not null' => FALSE,
+    ),
+    'pct_responding' => array(
+      'description' => 'Percent of eligible members respondig',
+      'type' => 'int',
+      'not null' => FALSE,
+    ),
+  ),
+  'primary key' => array('line_nbr'),
+);
+
+}

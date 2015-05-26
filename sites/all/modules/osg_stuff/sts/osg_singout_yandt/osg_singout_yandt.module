@@ -1,0 +1,64 @@
+<?php
+
+/**
+* @file osg_singout_yandt.module
+* TODO: Enter file description here.
+*/
+
+function _elap($when)
+{
+  $blurb = "";
+  $elap  = floor((osg_api_start_of_day($when) - osg_api_start_of_day(time())) /
+    86400);
+
+  if ($elap >= 0) {
+
+
+    switch ($elap) {
+      case 0:
+      $blurb = "Today";
+      break;
+      case 1:
+      $blurb = "Tomorrow";
+      break;
+      default:
+      $blurb = ($elap + 1) . " days away";
+
+      break;
+    }
+    // $blurb = "Performance is $blurb";
+
+  }
+
+  return $blurb;
+}
+
+
+function osg_singout_yandt_preprocess_node( & $vars)
+{
+  if (!empty($vars['node']->type))
+  {
+    if ($vars['node']->type == "singout") {
+      $elap = _elap(osg_api_get_flat_field('node', $vars['node'], 'field_when'));
+      if ($elap != "") {
+        //$vars['title_prefix']['osg_singout_yandt']['#children'] = t($elap);
+        $vars['title_prefix']['osg_singout_yandt']['#type'] = 'container';
+        //$vars['title_prefix']['osg_singout_yandt']['#prefix'] = ' < br/>';
+        //$vars['title_prefix']['osg_singout_yandt']['#suffix'] = ' < br/>';
+        $vars['title_prefix']['osg_singout_yandt']['span-0'] = array(
+          '#theme'     => 'html_tag',
+          '#tag'       => 'span',
+          '#value'     =>  t($elap),
+          '#attributes' => array(
+            'class' => array('my-span-class'),
+          )
+        );
+        // $vars['title_prefix']['osg_singout_yandt']['#attributes']['class'][] = 'osg_singout_yandt';
+
+        debug($vars['title_prefix'],'$vars["title_prefix"]',true);
+      }
+      //new dbug(_elap(osg_api_get_flat_field('node', $vars['node'], 'field_when')));
+    }
+  }
+
+}

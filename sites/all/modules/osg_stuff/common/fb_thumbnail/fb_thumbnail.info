@@ -1,0 +1,7 @@
+name = Facebook Thumbnail
+description = Specify Thumbnail for Facebook Share.
+package = Chuck Sharpe - Custom Mods
+core = 7.x
+
+; NEW LINE
+configure = admin/config/osg/fb_thumbnail

@@ -1,0 +1,930 @@
+<?php
+
+/**
+ * @file osg_singout_summary.module
+ * TODO: Enter file description here.
+ */
+
+/**
+ * Implements hook_help()..
+ */
+function osg_singout_summary_help($path, $arg)
+{
+    switch ($path)
+    {
+        case 'admin/help#Response Summary':
+            return '<p>' . t('View a summary listing of members who have singed up for a performance') .
+                '</p>';
+
+        case 'admin/help#Response Detail':
+            return '<p>' . t('View a detail list of members who have singed up for a performance') .
+                '</p>';
+    }
+}
+
+/**
+ * Implements hook_menu()..
+ */
+function osg_singout_summary_menu()
+{
+
+    $items = array();
+
+    $items['node/%node/osg/singout/summary'] = array(
+        'title' => 'Response Summary',
+        'page callback' => 'osg_singout_summary_summary_tab',
+        'page arguments' => array(1),
+        'access callback' => 'osg_singout_summary_access_objective',
+        //'access arguments' => array(1),
+        'access arguments' => array(1, 'view singout summary'),
+        'weight' => 5,
+        'type' => MENU_LOCAL_TASK,
+        );
+    $items['node/%node/osg/singout/detail'] = array(
+        'title' => 'Response Detail',
+        'page callback' => 'osg_singout_summary_detail_tab',
+        'page arguments' => array(1),
+        'access callback' => 'osg_singout_summary_access_objective',
+        //'access arguments' => array(1),
+        'access arguments' => array(1, 'view singout detail'),
+        'weight' => 6,
+        'type' => MENU_LOCAL_TASK,
+        );
+
+    $items['node/%node/osg/singout/report'] = array(
+        'title' => 'No Response',
+        'page callback' => 'osg_singout_summary_nonrespondents_tab',
+        'page arguments' => array(1),
+        'access callback' => 'osg_singout_summary_access_objective',
+        //'access arguments' => array(1),
+        'access arguments' => array(1, 'view nonrespondents'),
+        'weight' => 7,
+        'type' => MENU_LOCAL_TASK,
+        );
+
+    $items['node/%node/osg/singout/email/reports'] = array(
+        'title' => 'Email Attendance Plan to me',
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('osg_singout_summary_ereports_form', 1),
+        'access callback' => 'osg_singout_summary_access_objective',
+        'access arguments' => array(1, 'email reports'),
+        'weight' => 99,
+        'type' => MENU_LOCAL_TASK,
+
+        );
+    $items['osg/singout/listall'] = array(
+        'title' => 'Manifest',
+        'page callback' => 'osg_singout_summary_all_events_listing',
+        'access arguments' => array('access singout agglomerate'),
+        'type' => MENU_CALLBACK,
+        );
+
+    return $items;
+}
+/**
+ * Is Member
+ *
+ * */
+function osg_singout_summary_is_member($local_user = null)
+{
+    if (!is_object($local_user))
+    {
+        global $user;
+        $local_user = $user;
+    }
+    $roles = array_flip($local_user->roles);
+    //debug($roles);
+    return array_key_exists('member', $roles);
+
+}
+
+/**
+ * Access callback for node/%node/osg_singout_summary
+ */
+function osg_singout_summary_summary_access($node)
+{
+    $access = false;
+    if ($node->type == 'singout')
+    {
+        if (user_access('view singout summary'))
+        {
+            $access = true;
+        }
+
+    }
+    return $access;
+}
+
+/**
+ * Access callback for node/%node/osg_singout_detail
+ */
+function osg_singout_summary_detail_access($node)
+{
+    $access = false;
+    if ($node->type == 'singout')
+    {
+        if (user_access('view singout detail'))
+        {
+            $access = true;
+        }
+
+    }
+    return $access;
+}
+function osg_singout_summary_access_objective($node, $value)
+{
+    $access = false;
+    if ($node->type == 'singout')
+    {
+        if (user_access($value))
+        {
+            $access = true;
+        }
+    }
+    return $access;
+}
+
+
+function osg_singout_summary_summary_tab($node)
+{
+    /* $sql = "SELECT `Voice Part` ";
+    $sql = $sql . ",`Yes` ";
+    $sql = $sql . ", `No` ";
+    $sql = $sql . ", `Maybe` ";
+    $sql = $sql . ",`Unlikely` ";
+    //$sql = $sql .",respondents ";
+    $sql = $sql . ",round(yes/respondents*100,0) AS `% Yes` ";
+    $sql = $sql . ",round(`no`/respondents*100,0) AS `% No` ";
+    $sql = $sql . ",round((`maybe`+`unlikely`)/respondents*100,0) AS `% Limbo` ";
+    $sql = $sql . "FROM ( ";
+    $sql = $sql . "SELECT n.nid,t.name AS `Voice Part` ";
+    $sql = $sql . ", SUM(r.state='yes') AS `Yes` ";
+    $sql = $sql . ", SUM(r.state='no') AS `No` ";
+    $sql = $sql . ", SUM(r.state='maybe') AS `Maybe` ";
+    $sql = $sql . ", SUM(r.state='probably_not') AS `Unlikely` ";
+    $sql = $sql . "FROM registration r ";
+    $sql = $sql . "INNER JOIN node n ON r.entity_id=n.nid ";
+    $sql = $sql . "INNER JOIN users u ON r.user_uid=u.uid ";
+    $sql = $sql . "INNER JOIN field_data_field_voice_part p ON p.entity_id=u.uid ";
+    $sql = $sql . "INNER JOIN taxonomy_term_data t ON p.field_voice_part_tid=t.tid ";
+    $sql = $sql . "INNER JOIN field_data_field_when w ON w.entity_id=n.nid ";
+    $sql = $sql . "INNER JOIN users_roles s ON s.uid=user_uid ";
+    $sql = $sql . "INNER JOIN role l ON s.rid=l.rid AND l.name='member' ";
+    $sql = $sql . "GROUP BY n.nid, t.name WITH ROLLUP) a ";
+    $sql = $sql . "INNER JOIN ( ";
+    $sql = $sql . "SELECT COUNT(*) respondents,title,n.nid ";
+    $sql = $sql . "FROM registration r ";
+    $sql = $sql . "INNER JOIN node n ON r.entity_id=n.nid ";
+    $sql = $sql . "INNER JOIN users_roles s ON s.uid=user_uid ";
+    $sql = $sql . "INNER JOIN role l ON s.rid=l.rid AND l.name='member' ";
+    $sql = $sql . "GROUP BY nid) z ON z.nid=a.nid ";
+
+    $sql = $sql . "WHERE z.nid=" . $node->nid;
+
+    */
+    $result = osg_singout_summary_sql_prep("WHERE a.nid=" . $node->nid);
+    //$result = osdb_query($sql);
+    /*$fields = array(
+    'Voice Part'
+    ,'Yes'
+    ,'No'
+    ,'Maybe'
+    ,'Unlikely'
+    ,'% Yes'
+    ,'% No'
+    ,'% Limbo'
+    );*/
+    $fields = array(
+        'voice_part' => 'Voice Part',
+        'yes_count' => 'Yes',
+        'no_count' => 'No',
+        'maybe_count' => 'Maybe',
+        'unlikely_count' => 'Unlikely',
+        'unregistered_count' => 'No Response',
+        'pct_yes' => '% Yes',
+        'pct_no' => '% No',
+        'pct_limbo' => '% Limbo',
+        'pct_responding' => '% Responding',
+        );
+
+    $output = "";
+    if ($result->rowCount())
+    {
+
+        $heading = array();
+        $column = array();
+        foreach ($fields as $caption)
+        {
+            $heading[] = $caption;
+        }
+        $header = $heading;
+
+        while ($record = $result->fetchAssoc())
+        {
+
+            $column = array();
+            foreach ($fields as $field => $value)
+            {
+                $value = $record[$field];
+                if (is_null($record[$field]))
+                {
+                    if ($field == 'voice_part')
+                    {
+                        $value = "Total";
+                    }
+                }
+                $column[] = is_numeric($value) ? (int)$value : $value;
+
+            }
+            $rows[] = $column;
+        }
+        $data = array(
+            'header' => $header,
+            'rows' => $rows,
+            'attributes' => array('class' => array('singout-summary')),
+            );
+        $output = theme('table', $data);
+        $render_array['osg_singout_summary_summary'] = array(
+            '#items' => $output, // The list itself.
+            '#title' => t('Response Summary'),
+            );
+    }
+
+    return $output;
+
+}
+
+function osg_singout_summary_permission()
+{
+    return array(
+        'view singout summary' => array(
+            'title' => t('View Perfomance Response Summary'),
+            'description' => t('View Summary of members signed up for a given perfomrnace.'),
+            ),
+        'view singout detail' => array(
+            'title' => t('View Perfomance Response Detail'),
+            'description' => t('View list of all members that have singed up for a perfomance.'),
+            ),
+        'view nonrespondents' => array(
+            'title' => t('View Perfomance Nonrespondents'),
+            'description' => t('View list of all members that have NOT singed up for a perfomance.'),
+            ),
+        'access singout agglomerate' => array(
+            'title' => t('Access Singout Functionality'),
+            'description' => t('Overall Access to Singout Agglomerate and functionality'),
+            ),
+        'email reports' => array(
+            'title' => t('Email Response Summary'),
+            'description' => t('Send Node response summary by email'),
+            ),
+        );
+
+
+}
+
+function osg_singout_summary_detail_tab($node)
+{
+    /*
+    Old Logic
+    $sql = "SELECT n.nid ";
+    $sql = $sql . ", CONCAT(f.field_firstname_value, ' ', l.field_lastname_value) AS `display_name` ";
+    $sql = $sql . ", t.name AS voice_part ";
+    $sql = $sql . ", CONCAT(g.label,' - ', g.description) AS response, u.uid ";
+    $sql = $sql . "FROM registration r ";
+    $sql = $sql . "INNER JOIN node n ON r.entity_id = n.nid ";
+    $sql = $sql . "INNER JOIN users u ON r.user_uid = u.uid ";
+    $sql = $sql . "INNER JOIN field_data_field_voice_part p ON p.entity_id = u.uid ";
+    $sql = $sql . "INNER JOIN taxonomy_term_data t ON p.field_voice_part_tid = t.tid ";
+    $sql = $sql . "INNER JOIN field_data_field_when w ON w.entity_id = n.nid ";
+    $sql = $sql . "INNER JOIN field_data_field_lastname l ON l.entity_id = u.uid ";
+    $sql = $sql . "INNER JOIN field_data_field_firstname f ON f.entity_id = u.uid ";
+    $sql = $sql . "INNER JOIN users_roles s ON s.uid=user_uid ";
+    $sql = $sql . "INNER JOIN `role` e ON s.rid=e.rid AND e.name='member' ";
+    $sql = $sql . "INNER JOIN registration_state g ON g.name=r.state ";
+
+    $sql = $sql . "WHERE n.nid=" . $node->nid . " ";
+    $sql = $sql . "ORDER BY g.weight ";
+    $sql = $sql . ",r.state ";
+    $sql = $sql . ",t.weight ";
+    $sql = $sql . ", field_lastname_value ";
+    $sql = $sql . ", field_firstname_value ";
+    */
+    //dbtng version
+    /*SELECT x.nid ,
+    u.uid ,
+    CONCAT(u.first_name,' ',u.last_name) display_name ,
+    u.voice_part ,
+    CONCAT(s.label , ' ' , s.description) AS response
+    FROM osg_registration_ext x
+    INNER JOIN osg_users u ON x.uid=u.uid
+    INNER JOIN registration_state s ON s.name=x.state
+    WHERE nid=32
+    AND STATE IS NOT NULL
+    AND u.is_singer= TRUE*/
+    $query = db_select('osg_registration_ext', 'x');
+    $query->join('osg_users', 'u', 'x.uid=u.uid');
+    $query->join('registration_state', 's', 's.name=x.state');
+    $query->join('taxonomy_term_data', 't', 't.tid=u.tid');
+    $query->where('nid=:nid', array(':nid' => $node->nid));
+    $query->condition('u.is_singer', true);
+    $query->isNotNull('x.state');
+    $query->fields('x', array('nid', 'uid'));
+    $query->fields('u', array('voice_part'));
+    $query->addExpression("CONCAT(u.first_name,' ',u.last_name)", 'display_name');
+    $query->addExpression("CONCAT(s.label , ' - ' , s.description)", 'response');
+    $query->orderBy('s.weight');
+    $query->orderBy('s.label');
+    $query->orderBy('t.weight');
+    $query->orderBy('u.last_name');
+    $query->orderBy('u.first_name');
+
+    $result = $query->execute();
+
+    //drupal_set_message($sql);
+    $result_list = osg_singout_summary_result_list($result, 'All Respondents');
+
+
+    // foreach ($lines as $value) {
+    // $simple_list = $simple_list . $value . "\n";
+    // }
+    return $result_list;
+}
+
+
+function osg_singout_summary_sql_prep($where = "")
+{
+
+    $sql = "
+	SELECT CONCAT(a.title,' - ', FROM_UNIXTIME(a.start_time_unix,'%W, %M %D, %Y')) AS title
+	, b.*
+	, c.tot_respondants
+	, ROUND(yes_count / tot_respondants * 100) AS pct_yes
+	, ROUND(no_count / tot_respondants * 100) AS pct_no
+	, ROUND((b.maybe_count + b.unlikely_count) / tot_respondants * 100) AS pct_limbo
+	, ROUND((responding / user_count) * 100) AS pct_responding
+	FROM osg_ical_imported a
+	INNER JOIN (
+	SELECT nid
+	, x.voice_part
+	, SUM(state_yes) AS yes_count
+	, SUM(state_no) AS no_count
+	, SUM(state_maybe) AS maybe_count
+	, SUM(state_unlikely) AS unlikely_count
+	, SUM(unregistered) AS unregistered_count
+	, SUM(item_count) AS responding
+	, COUNT(DISTINCT x.uid) user_count
+	FROM osg_registration_ext x
+	INNER JOIN osg_users u ON x.uid=u.uid AND u.is_singer=1 AND u.is_member=1
+	GROUP BY nid
+	, voice_part WITH ROLLUP) b ON a.nid = b.nid AND a.available = 1
+	INNER JOIN (
+	SELECT nid
+	, SUM(item_count) tot_respondants
+	FROM osg_registration_ext x
+	INNER JOIN osg_users u ON x.uid=u.uid AND u.is_singer=1 AND u.is_member=1
+	GROUP BY nid) c ON a.nid = c.nid
+	LEFT JOIN taxonomy_term_data d ON d.name=b.voice_part
+	";
+    $sql = $sql . $where;
+    $sql = $sql . " ORDER BY a.start_time_unix,a.nid,IFNULL(d.weight,999)";
+    //drupal_set_message($sql);
+    $result = db_query($sql);
+    return $result;
+}
+function osg_singout_summary_nonrespondents_tab($node)
+{
+    /*$sql         = "SELECT a.uid ";
+    $sql         = $sql . ", CONCAT(f.field_firstname_value,' ',l.field_lastname_value) AS display_name ";
+    $sql         = $sql . ",t.name AS voice_part ";
+    $sql         = $sql . "FROM users a ";
+    $sql         = $sql . "INNER JOIN users_roles b ON a.uid=b.uid ";
+    $sql         = $sql . "INNER JOIN role c ON b.rid=c.rid ";
+    $sql         = $sql . "INNER JOIN field_data_field_firstname f ON f.entity_id=a.uid ";
+    $sql         = $sql . "INNER JOIN field_data_field_lastname l ON l.entity_id=a.uid ";
+    $sql         = $sql . "INNER JOIN field_data_field_voice_part p ON p.entity_id=a.uid ";
+    $sql         = $sql . "INNER JOIN taxonomy_term_data t ON p.field_voice_part_tid=t.tid ";
+
+    $sql         = $sql . "INNER JOIN role e ON b.rid=e.rid AND e.name='member' ";
+
+    $sql         = $sql . "LEFT JOIN ( ";
+    $sql         = $sql . "SELECT user_uid ";
+    $sql         = $sql . "FROM registration ";
+    $sql         = $sql . "WHERE entity_id=$node->nid) d ON a.uid=d.user_uid ";
+    $sql         = $sql . "WHERE c.name='member' AND d.user_uid IS NULL ";
+    $sql         = $sql . " AND a.uid NOT IN (";
+    $sql         = $sql . "SELECT DISTINCT uid ";
+    $sql         = $sql . "FROM users_roles ur ";
+    $sql         = $sql . "INNER JOIN role r ON ur.rid=r.rid ";
+    $sql         = $sql . "WHERE r.name IN ('administrator','director','non singer') UNION ";
+    $sql         = $sql . "SELECT 0 ";
+    $sql         = $sql . ")";
+    $sql         = $sql . "order by t.weight,l.field_lastname_value,f.field_firstname_value ";*/
+
+    $query = db_select('osg_registration_ext', 'x');
+    $query->join('osg_users', 'u', 'x.uid=u.uid');
+    //$query->join('registration_state','s','s.name = x.state');
+    $query->join('taxonomy_term_data', 't', 't.tid=u.tid');
+    $query->where('nid=:nid', array(':nid' => $node->nid));
+    $query->condition('u.is_singer', true);
+    $query->condition('u.is_member', true);
+    $query->isNull('x.state');
+    $query->fields('x', array('nid', 'uid'));
+    $query->fields('u', array(
+        'voice_part',
+        'last_name',
+        'first_name'));
+    $query->fields('t', array('weight'));
+
+    $query->addExpression("CONCAT(u.first_name,' ',u.last_name)", 'display_name');
+    //$query->orderBy('s.weight');
+    //$query->orderBy('s.label');
+    $query->orderBy('t.weight');
+    $query->orderBy('u.last_name');
+    $query->orderBy('u.first_name');
+
+    $result = $query->execute();
+
+    $result_list = osg_singout_summary_result_list($result, 'Non Respondents');
+    return $result_list;
+
+}
+
+
+function osg_singout_summary_result_list($result, $header = '')
+{
+    global $base_url;
+    //drupal_set_message($sql);
+    //$result = db_query($sql);
+
+    $voice_part = '';
+
+    $lines = array();
+    $lines[] = '<span class="respondents">';
+    if ($header > '')
+    {
+        $lines[] = "<span class=\"summary\">$header</span>";
+    }
+    $prior_response = "";
+    $skip = true;
+    while ($record = $result->fetchAssoc())
+    {
+
+        if (isset($record['response']))
+        {
+            if ($record['response'] <> $prior_response)
+            {
+                $lines[] = '';
+                $lines[] = '<span class="response">' . $record['response'] . '</span>';
+                $prior_response = $record['response'];
+                $voice_part = "";
+                $skip = false;
+            }
+        }
+        if ($voice_part <> $record['voice_part'])
+        {
+            $voice_part = $record['voice_part'];
+            if ($skip)
+            {
+                $lines[] = '';
+            }
+            $skip = true;
+            $lines[] = "<span class=\"voice-part\">$voice_part</span>";
+        }
+        $anchor = array('open' => '', 'close' => '');
+
+        if (empty($_SESSION['OSG']['singout']['summary']['flags']['suppress attendance link']))
+        {
+            $anchor['open'] = '<a href="' . $base_url . '/user/' . $record['uid'] .
+                '/attendance' . '">';
+            $anchor['close'] = "</a>";
+        }
+        $lines[] = '<span class="naked-name">' . $anchor['open'] . $record['display_name'] .
+            $anchor['close'] . '</span>';
+
+
+    }
+    $lines[] = '</span>';
+    //    if( user_access('email reports') == user_access('email reports'))
+    //    {
+    //        $lines[] = osg_singout_summary_build_email_me_button();
+    //    }
+    $simple_list = implode("<br>", $lines);
+    // foreach ($lines as $value) {
+    // $simple_list = $simple_list . $value . "\n";
+    // }
+    return $simple_list;
+
+}
+
+/*
+*
+* Implements hook_block_view_alter().
+*
+*/
+function osg_singout_summary_block_view_alter(&$data, $block)
+{
+
+    if ($block->delta == 'register-block')
+    {
+        $publish = variable_get('osg_singout_sync_availability_end');
+        $target = date('F j, Y', time() + $publish * 86400);
+
+        $block->title = "Performances in the next $publish days\n(thru $target)";
+
+    }
+
+}
+function osg_singout_summary_node_link($nid, $text, $extra = "")
+{
+    $anchor = array(
+        'open' => '<br><span class="osg-singout-list-all"><a href="' . url('node/' . $nid) .
+            $extra . '">',
+        'close' => '</a></span>',
+        );
+    return $anchor['open'] . $text . $anchor['close'];
+
+}
+/**
+ * Hide Restration/Singout Tabs if node is unavailble
+ *
+ * @param undefined $data
+ * @param undefined $router_item
+ * @param undefined $root_path
+ *
+ * @return
+ */
+function osg_singout_summary_menu_local_tasks_alter(&$data, $router_item, $root_path)
+{
+    // Add an action linking to node / add to all pages.
+    $my_path = explode('/', current_path());
+    //debug($my_path);
+    if ($my_path[0] == 'node')
+    {
+        if (count($my_path) == 2)
+        {
+            if (is_numeric($my_path[1]))
+            {
+
+                if (!osg_singout_sync_is_node_available($my_path[1]))
+                {
+                    //debug($data,'$data');
+                    //debug($router_item,'$router_item');
+                    //debug($root_path,'$root_path');
+                    foreach ($data['tabs'][0]['output'] as $key => $value)
+                    {
+                        $node_path = explode('/', $value['#link']['path']);
+                        if (count($node_path) > 2)
+                        {
+                            if ($node_path[2] == "registrations" || $node_path[2] == "register" || $node_path[2] ==
+                                "osg")
+                            {
+                                //debug($data['tabs'][0]['ouput']);
+                                unset($data['tabs'][0]['output'][$key]);
+                            }
+                        }
+                    }
+
+                }
+
+            }
+        }
+    }
+}
+function osg_singout_summary_all_events_listing()
+{
+    //drupal_set_message($sql);
+    //db_query("SELECT * FROM node where (0 = 1)");
+    //$result = db_query($sql);
+
+    //make sure the extendend registration table is synced
+    osg_singout_support_reset_table_osg_registration_ext();
+
+    $result = osg_singout_summary_sql_prep();
+    $record = $result->fetchAssoc();
+
+    $heading = array();
+    $column = array();
+    $tables = array();
+
+    $tag = array('open' => '<br><center><b><i><font size="+1">', 'close' =>
+            '</font></i></b></center>');
+    $tables[] = osg_singout_summary_node_link($record['nid'], $record['title'],
+        '/osg/singout/detail');
+    $title = $record['title'];
+
+
+    $display = array(
+        'Title' => false,
+        'Voice Part' => true,
+        'Yes' => true,
+        'No' => true,
+        'Maybe' => true,
+        'Unlikely' => true,
+        '% Yes' => true,
+        '% No' => true,
+        '% Limbo' => true,
+        );
+    $fields = array(
+        'voice_part' => 'Voice Part',
+        'yes_count' => 'Yes',
+        'no_count' => 'No',
+        'maybe_count' => 'Maybe',
+        'unlikely_count' => 'Unlikely',
+        'unregistered_count' => 'No Response',
+        'pct_yes' => '% Yes',
+        'pct_no' => '% No',
+        'pct_limbo' => '% Limbo',
+        'pct_responding' => '% Responding',
+        );
+
+
+    foreach ($record as $key => $value)
+    {
+        if (array_key_exists($key, $fields))
+        {
+            $heading[] = $fields[$key];
+            $column[] = $value;
+        }
+
+    }
+    $header = $heading;
+
+    $rows[] = $column;
+    while ($record = $result->fetchAssoc())
+    {
+
+        if ($record['title'] <> $title)
+        {
+            $data = array(
+                'header' => $header,
+                'rows' => $rows,
+                'attributes' => array('class' => array('singout-summary')),
+                );
+            $tables[] = theme('table', $data);
+            $rows = array();
+
+            $tables[] = osg_singout_summary_node_link($record['nid'], $record['title'],
+                '/osg/singout/detail');
+            $title = $record['title'];
+
+        }
+        $column = array();
+        if ((($record['tot_respondants']) < 1 || is_null($record['tot_respondants'])) &&
+            (0 == 1))
+        {
+            $column[] = array(
+                'data' => 'No Active Registrations',
+                'colspan' >= 50,
+                );
+        }
+        else
+        {
+
+            foreach ($record as $key => $value)
+            {
+                if (array_key_exists($key, $fields))
+                {
+                    if (is_null($value))
+                    {
+                        if ($key == 'voice_part')
+                        {
+                            $value = "Total ";
+                        }
+                    }
+                    $column[] = is_numeric($value) ? (int)$value : $value;
+
+                }
+            }
+        }
+        $rows[] = $column;
+    }
+
+    $data = array(
+        'header' => $header,
+        'rows' => $rows,
+        'attributes' => array('class' => array('singout-summary')),
+        );
+    $tables[] = theme('table', $data);
+
+    $output = "";
+    foreach ($tables as $item)
+    {
+        $output = $output . $item . "\n";
+    }
+    //$output = theme('table',$data);
+    return $output;
+}
+
+/**
+ *
+ * Implements hook_menu_alter()
+ *
+ * Alter the data being saved to the {menu_router} table after hook_menu is invoked.
+ *
+ * This hook is invoked by menu_router_build(). The menu definitions are passed
+ * in by reference. Each element of the $items array is one item returned
+ * by a module from hook_menu. Additional items may be added, or existing items
+ * altered.
+ *
+ * @param $items
+ *   Associative array of menu router definitions returned from hook_menu().
+ */
+/*
+function osg_singout_summary_menu_alter(&$items)
+{
+
+$items['node/%entity_object/register'] = array(
+'load arguments' => array(0 => 'node', ),
+'title' => 'Register',
+'page callback' => 'registration_register_page',
+'page arguments' => array(
+0 => 0,
+1 => 1,
+),
+'access callback' => 'registration_register_page_access',
+'access arguments' => array(
+0 => 0,
+1 => 1,
+),
+'type' => 132,
+'module' => 'registration',
+);
+
+}
+*/
+
+/**
+ * Build Email Me Button
+ */
+function osg_singout_summary_build_email_me_button()
+{
+    $button = '';
+    $parts = explode('/', current_path());
+    //debug($parts);
+
+    if (count($parts) > 1)
+    {
+        if (is_numeric($parts[1]))
+        {
+            $button = '<table><tr><td align="right"><a href="/osg/singout/report/email/' . $parts[1] .
+                '"><button>Email this report</button></a></td></tr></table>';
+
+        }
+
+    }
+    return $button;
+}
+function osg_singout_summary_build_email_report($node, $options)
+{
+    global $base_url, $user;
+    $_SESSION['OSG']['singout']['summary']['flags']['suppress attendance link'] = true;
+
+    $key = 'osg_singout_summary_email_node_attendance';
+    $bundle = array();
+    if ($options['Response Summary'])
+    {
+        $bundle[] = osg_singout_summary_summary_tab($node);
+    }
+    if ($options['Response Detail'])
+    {
+        $bundle[] = osg_singout_summary_detail_tab($node);
+    }
+    if ($options['No Response'])
+    {
+        $bundle[] = osg_singout_summary_nonrespondents_tab($node);
+    }
+
+
+    //debug($bundle);
+    $message = array();
+    $send_mail = true; //(bool) (strpos($info['mail'],'@example.com') == 0);
+
+    $query = db_select('osg_users', 'u');
+    $query->fields('u');
+    $query->condition('u.uid', $user->uid);
+    //debug((string) $query);
+
+    $info = $query->execute()->fetchAssoc();
+    //debug($info);
+    //$info['mail'] = 'onesharpeguy@gmail.com';
+    $recipient = $info['first_name'] . ' ' . $info['last_name'] . ' <' . $info['mail'] .
+        '>';
+    $sender = variable_get('site_mail', 'admin@example.com');
+    $default = 'Attendance Plan for ' . $node->title;
+    $message['subject'] = token_replace(variable_get('osg_singout_summary_email_node_attendance',
+        $default));
+    $body = join('<br>', $bundle);
+
+    $message['body']['html'] = $body;
+    $message['headers']['Content-Type'] =
+        'text / html; charset = UTF - 8; format = flowed; delsp = yes';
+
+    drupal_mail('osg_singout_summary', $key, $recipient, language_default(), $message,
+        $from = null, $send = true);
+
+
+    drupal_set_message("Mail sent to " . $info['first_name'] . ' ' . $info['last_name'] .
+        ' (' . $info['mail'] . ')');
+
+    drupal_goto("node/$node->nid");
+    $_SESSION['OSG']['singout']['summary']['flags']['suppress attendance link'] = FALSE;
+}
+
+function osg_singout_summary_mail($key, &$message, $params)
+{
+    global $user;
+    //debug($params,'$params',true);
+    // Each message is associated with a language,which may or may not be the
+    // current user's selected language,depending on the type of e - mail being
+    // sent. This $options array is used later in the t() calls for subject
+    // and body to ensure the proper translation takes effect.
+    $options = array('langcode' => $message['language']->language, );
+    //debug($key,'$key');
+    //debug($params,'$params');
+    switch ($key)
+    {
+            // Send a simple message from the contact form.
+        case 'contact_message':
+            $message['subject'] = t('E-mail sent from @site-name', array('@site-name' =>
+                    variable_get('site_name', 'Drupal')), $options);
+            // Note that the message body is an array,not a string.
+            $message['body'][] = t('@name sent you the following message:', array('@name' =>
+                    $user->name), $options);
+            // Because this is just user - entered text,we do not need to translate it.
+
+            // Since user - entered text may have unintentional HTML entities in it like
+            // ' < ' or ' > ',we need to make sure these entities are properly escaped,
+            // as the body will later be transformed from HTML to text,meaning
+            // that a normal use of ' < ' will result in truncation of the message.
+            $message['body'][] = check_plain($params['message']);
+            break;
+        case 'osg_singout_summary_email_node_attendance':
+            $message['body'] = $params['body'];
+            $message['subject'] = check_plain($params['subject']);
+            $message['headers']['Content-Type'] = $params['headers']['Content-Type'];
+
+            break;
+
+    }
+    // debug($message,"MESSAGE");
+
+
+}
+
+/**
+ *
+ * Implements hook_form()
+ *
+ * Display a node editing form.
+ *
+ */
+function osg_singout_summary_ereports_form($node, &$form_state, $node)
+{
+    global $user;
+    $map = drupal_map_assoc(array(
+        t('Response Summary'),
+        t('Response Detail'),
+        t('No Response'),
+        ));
+    $defaults = variable_get('osg_singout_summary_ereports_defaults', array($user->
+            uid => $map));
+    if (!empty($defaults[$user->uid]))
+    {
+        $defaults = $defaults[$user->uid];
+    }
+    else
+    {
+        $defaults = $map;
+    }
+    $form['osg_singout_summary_ereports'] = array(
+        '#type' => 'checkboxes',
+        '#options' => $map,
+        '#default_value' => $defaults,
+        '#title' => t('Select reports to mail'),
+        );
+    $form['osg_singout_summary_ereports_doit'] = array(
+        '#type' => 'submit',
+        '#value' => t('Send it'),
+        '#submit' => array('osg_singout_summary_ereports_fire', $node),
+        );
+    return $form;
+}
+function osg_singout_summary_ereports_fire($form, &$form_state)
+{
+    global $user;
+    $options = $form_state['input']['osg_singout_summary_ereports'];
+    $defaults = variable_get('osg_singout_summary_ereports_defaults', array());
+    $defaults[$user->uid] = $options;
+    $node = $form_state['buttons'][0]['#submit'][1];
+    variable_set('osg_singout_summary_ereports_defaults', $defaults);
+    if (count(array_filter($options)))
+    {
+        osg_singout_summary_build_email_report($node, $options);
+    }
+    else
+    {
+        drupal_set_message("No reports selected.", 'warning', false);
+        drupal_goto('/node/' . $node->nid . '/osg/singout/email/reports');
+    }
+
+}

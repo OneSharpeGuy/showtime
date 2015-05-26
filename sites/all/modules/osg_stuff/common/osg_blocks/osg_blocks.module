@@ -1,0 +1,497 @@
+<?php
+/**
+* @file
+* Module file for osg_blocks.
+*/
+/**
+* @defgroup osg_blocks Blocks by Chuck: Block
+* @ingroup OSG Stuff
+* @{
+* Demonstrates code creation of blocks.
+*
+* This is an example outlining how a module can define blocks that can be
+* displayed on various pages of a site, or how to alter blocks provided by
+* other modules.
+*/
+/**
+* This module uses the Block Example Module as a template.  That module had 3 defined delta blocks (configurable text, empty and uppercase).
+* For now, I am leaving this logic in tact and just adding my own logic.
+*/
+/**
+* Implements hook_menu().
+*
+* Provides a default page to explain what this module does.
+*/
+function osg_blocks_menu() {
+  $items['osg_stuff/osg_blocks'] = array(
+    'page callback'  => 'osg_blocks_page',
+    'access callback'=> true,
+    'title'          => 'Blocks by Chuck:',
+  );
+  return $items;
+}
+/**
+* Simple page function to explain what the Chuck's Blocks is about.
+*/
+function osg_blocks_page() {
+  $page = array(
+    '#type'  => 'markup',
+    '#markup'=> t('Blocks by Chuck are blocks I concieved that I otherwise could not find in Drupal.', array('@url' => url('admin/structure/block'))),
+  );
+  return $page;
+}
+/**
+* Implements hook_block_info().
+*
+* This hook declares what blocks are provided by the module.
+*/
+function osg_blocks_block_info() {
+  // This hook returns an array, each component of which is an array of block
+  // information. The array keys are the 'delta' values used in other block
+  // hooks.
+  // The required block information is a block description, which is shown
+  // to the site administrator in the list of possible blocks. You can also
+  // provide initial settings for block weight, status, etc.
+  // Many options are defined in hook_block_info():
+  $blocks['osg_blocks_unpublished_content'] = array(
+    'info'  => t('Blocks by Chuck: Unpublished Content'),
+    'status'=> true,
+    'region'=> 'sidebar_second',
+  );
+  $blocks['osg_blocks_recent'] = array(
+    'info'  => t('Blocks by Chuck: Recently Viewed Content'),
+    'title' => 'Content Viewed Today',
+    'status'=> true,
+    'region'=> 'sidebar_second',
+  );
+  $blocks['osg_blocks_powered_by'] = array(
+    'info'  => t('Blocks by Chuck: Powered by Drupal'),
+    'status'=> true,
+    'region'=> 'footer',
+  );
+  /*
+  $blocks['osg_blocks_hello'] = array(
+  'info' => t('Blocks by Chuck: Hello Block'),
+  'status' => false,
+  'hidden' => true,
+  );
+  */
+  return $blocks;
+}
+/**
+* Implements hook_block_configure().
+*
+* This hook declares configuration options for blocks provided by this module.
+*/
+function osg_blocks_block_configure($delta = '') {
+  // The $delta parameter tells us which block is being configured.
+  // In this example, we'll allow the administrator to customize
+  // the text of the 'configurable text string' block defined in this module.
+  global $base_url;
+
+  $form = array();
+  switch ($delta) {
+    case 'osg_blocks_recent';
+    $types   = node_type_get_types();
+    $options = array();
+    foreach ($types as $type) {
+      $options[$type->type] = $type->name;
+    }
+    $form['osg_blocks_recent_nodetypes'] = array(
+      '#type'         => 'checkboxes',
+      '#title'        => t('Node Types'),
+      '#description'  => t('Node types to include.'),
+      '#default_value'=> variable_get('osg_blocks_recent_nodetypes', array()),
+      '#options'      => $options,
+    );
+    $result = (boolean)db_query("select count(*) from information_schema.`Tables` where TABLE_NAME='hidden_nodes'")->
+    fetchField();
+    if ($result) {
+      $form['osg_blocks_recent_supress_hidden'] = array(
+        '#type'         => 'checkbox',
+        '#title'        => t('Supress hidden nodes'),
+        '#description'  => t('If checked, hidden nodes will not be listed.'),
+        '#default_value'=> variable_get('osg_blocks_recent_supress_hidden', true),
+      );
+    }
+    else {
+      variable_set('osg_blocks_recent_supress_hidden', false);
+    }
+    $result = (boolean)db_query("select count(*) from information_schema.`Tables` where TABLE_NAME='content_access'")->
+    fetchField();
+    if ($result) {
+      $form['osg_blocks_recent_supress_inaccessible'] = array(
+        '#type'         => 'checkbox',
+        '#title'        => t('Supress inaccessible Nodes'),
+        '#description'  => t('If checked, hidden nodes will not be listed.'),
+        '#default_value'=> variable_get('osg_blocks_recent_supress_inaccessible', true),
+      );
+    }
+    else {
+      variable_set('osg_blocks_recent_supress_inaccessible', false);
+    }
+    $form['osg_blocks_recent_nodecount'] = array(
+      '#type'         => 'textfield',
+      '#title'        => t('Target Item Count'),
+      '#size'         => 5,
+      '#description'  => t('Approximate number of items to show. (0 = All nodes viewed today)'),
+      '#default_value'=> variable_get('osg_blocks_recent_nodecount', 10),
+    );
+    break;
+    case 'osg_blocks_unpublished_content';
+    $default_css        = variable_get('osg_blocks_unpublished_content_css', '');
+    $default_decoration = osg_blocks_unpublished_content_explode_decoration(variable_get('osg_blocks_unpublished_content_decoration',
+        ''));
+    $description        = "Span Tag Attributes to display  $default_decoration[0]<span $default_css/><b>Author's Name</b></span>
+    $default_decoration[1] field (when author is not current user)";
+    $default_decoration = implode("|", $default_decoration);
+    if ($default_css == '') {
+      $default_css = 'style="font-variant: small-caps; font-size: x-small;"';
+    }
+    $form['osg_blocks_unpublished_content_decoration'] = array(
+      '#type'         => 'textfield',
+      '#title'        => t('User Name Decoration'),
+      '#size'         => 10,
+      '#description'  => t('Characters to surround username (when author is not current user).<br>
+        String should be symmetrical in the format "{LeftSide}|{RightSide}"<br>
+        {LeftSide} and {RightSide} should be separated by a Pipe Charater.'),
+      '#default_value'=> $default_decoration,
+    );
+    $form['osg_blocks_unpublished_content_css'] = array(
+      '#type'         => 'textfield',
+      '#title'        => t('Styling'),
+      '#size'         => 60,
+      '#description'  => t($description),
+      '#default_value'=> $default_css,
+    );
+    break;
+    case 'osg_blocks_powered_by';
+    $form['osg_blocks_powered_by_author'] = array(
+      '#type'         => 'textfield',
+      '#title'        => t('Author'),
+      '#size'         => 60,
+      '#description'  => t('Name of site designer.<br>If name is blank, <b>Designed by</b> division will not be displayed.'),
+      '#default_value'=> variable_get('osg_blocks_powered_by_author', ''),
+    );
+    $form['osg_blocks_powered_by_author_url'] = array(
+      '#type'         => 'textfield',
+      '#title'        => t("Author's URL"),
+      '#size'         => 60,
+      '#description'  => t("Hypertext REFerence for authour's web page.<br>If blank, author will not display as a link."),
+      '#default_value'=> variable_get('osg_blocks_powered_by_author_url', ''),
+    );
+    $form['osg_blocks_powered_by_img'] = array(
+      '#type'         => 'textfield',
+      '#title'        => t('Drupal Logo'),
+      '#size'         => 60,
+      '#description'  => t('Path to drupal logo, relative to ' . variable_get('osg_stuff_pic_path',$base_url.'/sites/default/files')),
+      '#default_value'=> variable_get('osg_blocks_powered_by_img', ''),
+    );
+
+    $form['osg_blocks_powered_table_styling'] = array(
+      '#type'         => 'textfield',
+      '#title'        => t("Table Styling"),
+      '#size'         => 60,
+      '#description'  => t("CSS For Element Display formatting"),
+      '#default_value'=> variable_get('osg_blocks_powered_table_styling','width="100%"'),
+    );
+    break;
+  }
+  return $form;
+}
+/**
+* Implements hook_block_save().
+*
+* This hook declares how the configured options for a block
+* provided by this module are saved.
+*/
+function osg_blocks_block_save($delta = '', $edit = array()) {
+  // We need to save settings from the configuration form.
+  // We need to check $delta to make sure we are saving the right block.
+  switch ($delta) {
+    case 'osg_blocks_recent';
+    variable_set('osg_blocks_recent_nodecount', $edit['osg_blocks_recent_nodecount']);
+    variable_set('osg_blocks_recent_nodetypes', $edit['osg_blocks_recent_nodetypes']);
+    variable_set('osg_blocks_recent_supress_hidden', $edit['osg_blocks_recent_supress_hidden']);
+    variable_set('osg_blocks_recent_supress_inaccessible', $edit['osg_blocks_recent_supress_inaccessible']);
+    break;
+    case 'osg_blocks_unpublished_content';
+    $default_decoration = implode('|', osg_blocks_unpublished_content_explode_decoration($edit['osg_blocks_unpublished_content_decoration']));
+    $default_css        = $edit['osg_blocks_unpublished_content_css'];
+    if ($default_css == '') {
+      $default_css = 'style="font-variant: small-caps; font-size: x-small;"';
+    }
+    variable_set('osg_blocks_unpublished_content_decoration', $default_decoration);
+    variable_set('osg_blocks_unpublished_content_css', $default_css);
+    break;
+    case 'osg_blocks_powered_by';
+    variable_set('osg_blocks_powered_by_author', $edit['osg_blocks_powered_by_author']);
+    variable_set('osg_blocks_powered_by_author_url', $edit['osg_blocks_powered_by_author_url']);
+    variable_set('osg_blocks_powered_by_img', $edit['osg_blocks_powered_by_img']);
+    variable_set('osg_blocks_powered_table_styling',$edit['osg_blocks_powered_table_styling']);
+    break;
+  }
+  return;
+}
+/**
+* Implements hook_block_view().
+*
+* This hook generates the contents of the blocks themselves.
+*/
+function osg_blocks_block_view($delta = '') {
+  //The $delta parameter tells us which block is being requested.
+  switch ($delta) {
+    case 'osg_blocks_unpublished_content';
+    global $user;
+    if ($user->uid <= '1') {
+      $user_name = '';
+    }
+    else {
+      $user_name = ' by ' . $user->name;
+    }
+    $block['title'] = t('Unpublished Content' . $user_name);
+    $block['content'] = osg_blocks_contents($delta);
+    break;
+    case 'osg_blocks_recent';
+    global $block_title;
+    $block['content'] = osg_blocks_contents($delta);
+    $block['title'] = $block_title;
+    break;
+    case 'osg_blocks_powered_by';
+    $block['content'] = osg_blocks_contents($delta);
+    break;
+    case 'osg_blocks_hello';
+    /*
+    I can't get this block to format the way I want it to,
+    but I don't want to delete the code, in case I figure it out later.
+    Remove the return line, to re-activate the logic.
+    */
+    return;
+    $block['content'] = osg_blocks_contents($delta);
+    break;
+  }
+  return $block;
+}
+/**
+* A module-defined block content function.
+*/
+function osg_blocks_contents($which_block) {
+  $body = "";
+  switch ($which_block) {
+    case 'osg_blocks_unpublished_content';
+    global $user;
+    $body = "";
+    $sql  = "SELECT nid,title,n.uid,n.created,u.name ";
+    $sql  = $sql . "FROM node n ";
+    $sql  = $sql . "INNER JOIN users u ON n.uid=u.uid ";
+    $sql  = $sql . "WHERE `type`='blog' AND n.`status`=0 ";
+    if (($user->uid) <> 1) {
+      $sql = $sql . "AND n.uid=" . $user->uid;
+    }
+    $sql      = $sql . " ORDER BY changed DESC";
+    $result   = db_query($sql);
+    $rowcount = $result->rowCount();
+    if ($rowcount > 0) {
+      $body       = "<div class=\"item-list\"><ul>\n";
+      $styling    = variable_get('osg_blocks_unpublished_content_css', 'style="font-size:x-small"');
+      $decoration = osg_blocks_unpublished_content_explode_decoration(variable_get('osg_blocks_unpublished_content_decoration',
+          ''));
+      foreach ($result as $row) {
+        $blurb = $row->title;
+        if ($row->uid <> $user->uid) {
+          $blurb = $blurb . "<span $styling> " . $decoration[0] . $row->name . $decoration[1] . "</span>";
+        }
+        $body = $body . "<li><a href=\"/node/" . $row->nid . "\">" . $blurb . "</a></li>\n";
+      }
+      $body = $body . "</ul></div>\n";
+    }
+    break;
+    //    case 'osg_blocks_recent';
+    //    include_once 'osg_blocks_recent.inc';
+    //    break;
+    case 'osg_blocks_powered_by';
+    $author     = variable_get('osg_blocks_powered_by_author');
+    $author_url = variable_get('osg_blocks_powered_by_author_url');
+    $drupal_logo= '<img src="/' . variable_get('osg_stuff_pic_path','sites/default/files') . '/' . variable_get('osg_blocks_powered_by_img') .
+    '" style="float:left;height:75px">';
+    $table_css  = variable_get('osg_blocks_powered_table_styling');
+    $body       = $body . "<table $table_css><tbody><tr><td>&nbsp;</td>";
+    $tag        = array(
+      'anchor' => array(
+        'open' => '',
+        'close'=> '',
+      ),
+      'italic' => array(
+        'open' => '',
+        'close'=> '',
+      ),
+    );
+    if ($author > '') {
+      $tag['anchor']['open'] = '<a href="';
+      $tag['anchor']['open'] = $tag['anchor']['open'] . variable_get('osg_blocks_powered_by_author_url');
+      $tag['anchor']['open'] = $tag['anchor']['open'] . '" style="text-decoration: none;" target=';
+      $tag['anchor']['open'] = $tag['anchor']['open'] . '"_blank">';
+      $tag['italic']['open'] = '<i>';
+      $tag['italic']['close'] = '</i>';
+      $body = $body . '<td style="vertical-align:text-top;" width="100px">';
+      $body = $body . $tag['anchor']['open'];
+      $body = $body . 'Designed by ';
+      $body = $body . '<strong>' . $tag['italic']['open'];
+      $body = $body . $author . $tag['anchor']['close'];
+      $body = $body . $tag['italic']['close'] . '</strong>';
+      $body = $body . $tag['anchor']['close'] . '</td><td width=15px>&nbsp;</td>';
+    }
+    $body = $body . '<td style="vertical-align:text-top;text-align:right" width="100px">';
+    $body = $body . '<a href="http://drupal.org" target="_blank">Powered by <strong><i>Drupal</i></strong>';
+    $body = $body . $drupal_logo;
+    $body = $body . '</a></td></tr></tbody></table>';
+    break;
+    case 'osg_blocks_hello';
+    global $user, $conf, $theme_info, $base_url;
+    $uid = $user->uid;
+    // This assumes  that the theme is an Adaptaive Theme, colorable subtheme
+    if (array_key_exists("color_" . $theme_info->name . "_palette", $conf)) {
+      $my_fgcolor = $conf["color_" . $theme_info->name . "_palette"]["slogan"];
+    }
+    else {
+      $my_fgcolor = 'white';
+    }
+    if ($uid > 0) {
+      $name = $user->name;
+      $login= $user->login;
+      $roles= $user->roles;
+      if (($_SERVER['REQUEST_TIME'] - $login) < 600) {
+        $query      = 'SELECT `field_first_name_value`FROM `field_data_field_first_name`where `entity_id`=' . $user->uid;
+        $first_name = db_query($query)->fetchField();
+        if ($first_name) {
+          $name = $first_name;
+        }
+        $hour = substr(format_date($user->timestamp, 'short', $user->timezone), - 5, 2);
+        $part = "Good ";
+        if ($hour < 12) {
+          $part = $part . "morning ";
+        }
+        else
+        if ($hour >= 18) {
+          $part = $part . "evening ";
+        }
+        else {
+          $part = $part . "afternoon ";
+        }
+      }
+      else {
+        $part = "User:";
+      }
+      $body = "<div style=\"float:right\">";
+      $body = $body . "<span style=\"color:$my_fgcolor:float:right\">";
+      $body = $body . "<div>User: <i><a style=\"color:$my_fgcolor\" href=\"$base_url/?q=user/1\">";
+      $body = $body . "<b>admin</b></a></i>&nbsp;|&nbsp;<a style=\"color:$my_fgcolor\" href=\"$base_url/?q=user/logout\">Log Out</a>";
+      $body = $body . "</div>";
+      $body = $body . "</span>";
+      if (in_array('administrator', array_values($user->roles))) {
+        $body = $body . "<div><span style=\"color:$my_fgcolor;font-size:x-small;float:right\">Hostname: $user->hostname</span>";
+        $body = $body . "</div>";
+      }
+      $body = $body . "</div>";
+    }
+    break;
+  }
+  return $body;
+}
+/*
+* The following hooks can be used to alter blocks
+* provided by your own or other modules.
+*/
+/**
+* Implements hook_block_list_alter().
+*
+* This hook allows you to add, remove or modify blocks in the block list. The
+* block list contains the block definitions. This example requires
+* search module and the search block enabled
+* to see how this hook implementation works.
+*
+* You may also be interested in hook_block_info_alter(), which allows changes
+* to the behavior of blocks.
+*/
+function osg_blocks_block_list_alter( & $blocks) {
+  // We are going to make the search block sticky on bottom of regions. For
+  // this example, we will modify the block list and append the search block at
+  // the end of the list, so even if the administrator configures the block to
+  // be on the top of the region, it will demote to bottom again.
+  foreach ($blocks as $bid => $block) {
+    if (($block->module == 'search') && ($block->delta == 'form')) {
+      // Remove the block from the list and append to the end.
+      unset($blocks[$bid]);
+      $blocks[$bid] = $block;
+      break;
+    }
+  }
+}
+/**
+* Implements hook_block_view_alter().
+*
+* This hook allows you to modify the output of any block in the system.
+*
+* In addition, instead of hook_block_view_alter(), which is called for all
+* blocks, you can also use hook_block_view_MODULE_DELTA_alter() to alter a
+* specific block. To change only our block using
+* hook_block_view_MODULE_DELTA_alter, we would use the function:
+* osg_blocks_block_view_osg_blocks_osg_blocks_configurable_text_alter()
+*
+* We are going to uppercase the subject (the title of the block as shown to the
+* user) of any block if the string "uppercase" appears in the block title or
+* subject. Default block titles are set programmatically in the subject key;
+* titles created through the UI are saved in the title key. This module creates
+* an example block to demonstrate this effect (default title set
+* programmatically as subject).  You can also demonstrate the effect of this
+* hook by creating a new block whose title has the string 'uppercase' in it
+* (set as title through the UI).
+*/
+//function osg_blocks_block_view_alter( & $data, $block)
+//{
+//    // We'll search for the string 'uppercase'.
+//    if ((!empty($block->title) && stristr($block->title, 'uppercase')) || (!empty($data['subject']) && stristr($data['subject'], 'uppercase')))
+//    {
+//        // This will uppercase the default title.
+//        $data['subject'] = isset($data['subject']) ? drupal_strtoupper($data['subject']):
+//        '';
+//        // This will uppercase a title set in the UI.
+//        $block->title = isset($block->title) ? drupal_strtoupper($block->title) : '';
+//    }
+//
+//}
+//
+function osg_blocks_unpublished_content_explode_decoration($var) {
+  $decoration = explode('|', $var);
+  if (count($decoration) <> 2) {
+    $decoration = array('&lt;','&gt;');
+  }
+  return $decoration;
+}
+/*
+function osg_blocks_preprocess_block(&$variables) {
+// In the header region visually hide block titles.
+if ($variables['block']->region == 'header') {
+debug($variables);
+}
+}
+*/
+/*
+function osg_blocks_preprocess(&$variables, $hook) {
+//debug($variables, 'variables',true);
+//debug($hook,'hooks',true);
+if ($hook == 'block') {
+if ($variables['elements']['#block']->delta == 'osg_blocks_hello') {
+debug(array_keys($variables), 'array_keys', true);
+debug($hook, 'hook', true);
+debug($variables['elements'], 'elements', true);
+debug($variables['classes_array'], 'classes_array', true);
+debug($variables['attributes_array'], 'attributes_array', true);
+//debug($variables,'variables',true);
+}
+}
+}
+*/
+/**
+* @} End of "defgroup osg_blocks".
+*/

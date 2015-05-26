@@ -1,0 +1,392 @@
+<?php
+/**
+* @file osg_singout_support.install
+* TODO: Enter file description here.
+*/
+
+
+/**
+* Implements hook_install().
+*/
+function osg_singout_support_install()
+{
+
+}
+
+
+/**
+* Implements hook_uninstall().
+*/
+function osg_singout_support_uninstall()
+{
+
+
+}
+
+
+/**
+* Implements hook_schema()
+*
+* Define the current version of the database schema.
+*
+* A Drupal schema definition is an array structure representing one or
+* more tables and their related keys and indexes. A schema is defined by
+* hook_schema() which must live in your module's .install file.
+*
+* This hook is called at install and uninstall time, and in the latter
+* case, it cannot rely on the .module file being loaded or hooks being known.
+* If the .module file is needed, it may be loaded with drupal_load().
+*
+* The tables declared by this hook will be automatically created when
+* the module is first enabled, and removed when the module is uninstalled.
+* This happens before hook_install() is invoked, and after hook_uninstall()
+* is invoked, respectively.
+*
+* By declaring the tables used by your module via an implementation of
+* hook_schema(), these tables will be available on all supported database
+* engines. You don't have to deal with the different SQL dialects for table
+* creation and alteration of the supported database engines.
+*
+* See the Schema API Handbook at http://drupal.org/node/146843 for
+* details on schema definition structures.
+*
+* @return
+*   A schema definition structure array. For each element of the
+*   array, the key is a table name and the value is a table structure
+*   definition.
+*
+* @ingroup schemaapi
+*/
+function osg_singout_support_schema()
+{
+	$schema['osg_users'] = array(
+		'description'=> 'User info that I commonly access in code',
+		'fields'                                                                       => array(
+			'uid'                                                                                                   => array(
+				'description'=> 'User ID',
+				'type'       => 'int',
+				'not null'   => TRUE,
+			),
+			'user_name'               => array(
+				'description'=> 'User Name',
+				'type'       => 'varchar',
+				'length'     => '50',
+				'not null'   => TRUE,
+			),
+			'first_name' => array(
+				'description'=> 'TODO: please describe this field!',
+				'type'       => 'varchar',
+				'length'     => '50',
+				'not null'   => FALSE,
+			),
+			'last_name'               => array(
+				'description'=> 'TODO: please describe this field!',
+				'type'       => 'varchar',
+				'length'     => '50',
+				'not null'   => FALSE,
+			),
+			'mail'                                                                                     => array(
+				'description'=> 'Email Address',
+				'type'       => 'varchar',
+				'length'     => '50',
+				'not null'   => FALSE,
+			),
+			'voice_part' => array(
+				'description'=> 'Voice Part',
+				'type'       => 'varchar',
+				'length'     => '50',
+				'not null'   => FALSE,
+			),
+			'tid'                                                                                                   => array(
+				'description'=> 'Voice Part Taxononmy Term ID',
+				'type'       => 'int',
+				'not null'   => FALSE,
+			),
+			'is_member'               => array(
+				'description'=> 'Is user an STS member?',
+				'type'       => 'int',
+				'unsigned'   => TRUE,
+				'size'       => 'tiny',
+				'not null'   => TRUE,
+			),
+			'is_admin'                             => array(
+				'description'=> 'Is user an Administrator?',
+				'type'       => 'int',
+				'unsigned'   => TRUE,
+				'size'       => 'tiny',
+				'not null'   => TRUE,
+			),
+			'is_singer'               => array(
+				'description'=> 'Is user a Singer?',
+				'type'       => 'int',
+				'unsigned'   => TRUE,
+				'size'       => 'tiny',
+				'not null'   => TRUE,
+			),
+		),
+		'primary key' => array('uid'),
+	);
+
+	$schema['osg_registration_ext'] = array(
+		'description'=> 'Extension of Singout Registration primarily for summary',
+		'fields'                          => array(
+			'nid'                                                        => array(
+				'description'=> 'Node ID',
+				'type'       => 'int',
+				'not null'   => TRUE,
+			),
+			'uid'                                                        => array(
+				'description'=> 'User ID',
+				'type'       => 'int',
+				'not null'   => TRUE,
+			),
+			'state'                                              => array(
+				'description'=> 'Regustration State',
+				'type'       => 'varchar',
+				'length'     => '50',
+				'not null'   => FALSE,
+			),
+			'voice_part'                     => array(
+				'description'=> 'Voice Part Taxonomy Term',
+				'type'       => 'varchar',
+				'length'     => '50',
+				'not null'   => FALSE,
+			),
+			'item_count'                     => array(
+				'description'=> 'Number of registrations this record represents.',
+				'type'       => 'int',
+				'not null'   => FALSE,
+			),
+			'state_yes'                          => array(
+				'description'=> 'Boolean ’YES’ value',
+				'type'       => 'int',
+				'unsigned'   => TRUE,
+				'size'       => 'tiny',
+				'not null'   => TRUE,
+			),
+			'state_no'                               => array(
+				'description'=> 'Boolean ’NO’ value',
+				'type'       => 'int',
+				'unsigned'   => TRUE,
+				'size'       => 'tiny',
+				'not null'   => TRUE,
+			),
+			'state_maybe'                => array(
+				'description'=> 'Boolean value Maybe',
+				'type'       => 'int',
+				'unsigned'   => TRUE,
+				'size'       => 'tiny',
+				'not null'   => TRUE,
+			),
+			'state_unlikely' => array(
+				'description'=> 'Boolean value Unlikely',
+				'type'       => 'int',
+				'unsigned'   => TRUE,
+				'size'       => 'tiny',
+				'not null'   => TRUE,
+			),
+			'unregistered'           => array(
+				'description'=> 'User not registered for this event',
+				'type'       => 'int',
+				'unsigned'   => TRUE,
+				'size'       => 'tiny',
+				'not null'   => TRUE,
+			),
+			'tstamp'                  => array(
+				'description'=> 'Last Update',
+				'type'       => 'int',
+				'not null'   => TRUE,
+			),
+		),
+	);
+
+	$schema['osg_singout_summary'] = array(
+		'description'=> 'Summarized view of registration activity',
+		'fields'           => array(
+			'line_nbr'             => array(
+				'description'=> 'TODO: please describe this field!',
+				'type'       => 'serial',
+				'not null'   => TRUE,
+			),
+			'nid'                       => array(
+				'description'=> 'Node ID',
+				'type'       => 'int',
+				'not null'   => TRUE,
+			),
+			'voice_part'         => array(
+				'description'=> 'Voice Part',
+				'type'       => 'varchar',
+				'length'     => '255',
+				'not null'   => TRUE,
+			),
+			'tid'                       => array(
+				'description'=> 'Taxonomy ID',
+				'type'       => 'int',
+				'not null'   => FALSE,
+			),
+			'weight'                 => array(
+				'description'=> 'Taxonomy Weight',
+				'type'       => 'int',
+				'not null'   => TRUE,
+			),
+			'yes_count'           => array(
+				'description'=> 'Count of Members responding yes',
+				'type'       => 'int',
+				'not null'   => FALSE,
+			),
+			'no_count'             => array(
+				'description'=> 'Count of members responding no',
+				'type'       => 'int',
+				'not null'   => FALSE,
+			),
+			'maybe_count'       => array(
+				'description'=> 'Count of members responding maybe',
+				'type'       => 'int',
+				'not null'   => FALSE,
+			),
+			'unlikely_count' => array(
+				'description'=> 'Count of members responding unlikely',
+				'type'       => 'int',
+				'not null'   => FALSE,
+			),
+			'responses'           => array(
+				'description'=> 'Count of total responses',
+				'type'       => 'int',
+				'not null'   => FALSE,
+			),
+			'unregistered'     => array(
+				'description'=> 'Count of registered users not responding',
+				'type'       => 'int',
+				'not null'   => FALSE,
+			),
+			'eligible'             => array(
+				'description'=> 'Number of users eligible to resond to this event',
+				'type'       => 'int',
+				'not null'   => FALSE,
+			),
+			'pct_yes'               => array(
+				'description'=> 'Percent of members responding yes',
+				'type'       => 'int',
+				'not null'   => FALSE,
+			),
+			'pct_no'                 => array(
+				'description'=> 'Percent of members responding no',
+				'type'       => 'int',
+				'not null'   => FALSE,
+			),
+			'pct_limbo'           => array(
+				'description'=> 'Percent of members yet undecided',
+				'type'       => 'int',
+				'not null'   => FALSE,
+			),
+			'pct_responding' => array(
+				'description'=> 'Percent of eligible members respondig',
+				'type'       => 'int',
+				'not null'   => FALSE,
+			),
+		),
+		'primary key' => array('line_nbr'),
+	);
+	$schema['osg_voice_part_summary'] = array(
+		'description'=> 'TODO: please describe this table!',
+		'fields'      => array(
+			'ovps_id'            => array(
+				'description'=> 'uniqueid',
+				'type'       => 'serial',
+				'not null'   => TRUE,
+			),
+			'nid'                => array(
+				'description'=> 'Node ID',
+				'type'       => 'int',
+				'not null'   => TRUE,
+			),
+			'tid'                => array(
+				'description'=> 'Taxonomy Detail id',
+				'type'       => 'int',
+				'not null'   => FALSE,
+			),
+			'weight'             => array(
+				'description'=> 'Taxonmomy Weight',
+				'type'       => 'int',
+				'not null'   => TRUE,
+			),
+			'voice_part'         => array(
+				'description'=> 'Taxonomny Name',
+				'type'       => 'varchar',
+				'length'     => '50',
+				'not null'   => TRUE,
+			),
+			'yes_count'          => array(
+				'description'=> 'Number of YES respondents',
+				'type'       => 'int',
+				'unsigned'   => TRUE,
+				'not null'   => FALSE,
+			),
+			'no_count'           => array(
+				'description'=> 'Number of NO respondents',
+				'type'       => 'int',
+				'unsigned'   => TRUE,
+				'not null'   => FALSE,
+			),
+			'maybe_count'        => array(
+				'description'=> 'Number of MAYBE respondents',
+				'type'       => 'int',
+				'unsigned'   => TRUE,
+				'not null'   => FALSE,
+			),
+			'unlikely_count'     => array(
+				'description'=> 'Number of UNLIKELY respondents',
+				'type'       => 'int',
+				'unsigned'   => TRUE,
+				'not null'   => FALSE,
+			),
+			'unregistered_count' => array(
+				'description'=> 'As yet, unregistered',
+				'type'       => 'int',
+				'not null'   => FALSE,
+			),
+			'responding'         => array(
+				'description'=> 'Total number of respondents voice_part',
+				'type'       => 'int',
+				'unsigned'   => TRUE,
+				'not null'   => FALSE,
+			),
+			'user_count'         => array(
+				'description'=> 'Number of eligible users',
+				'type'       => 'int',
+				'unsigned'   => TRUE,
+				'not null'   => FALSE,
+			),
+			'total_responding'   => array(
+				'description'=> 'Total number of respondents for node',
+				'type'       => 'int',
+				'not null'   => FALSE,
+			),
+		),
+		'primary key' => array('ovps_id'),
+	);
+
+	return $schema;
+}
+
+/**
+* Implements hook_enable()
+*
+* Perform necessary actions after module is enabled.
+*
+* The hook is called every time the module is enabled. It should be
+* implemented in the module's .install file. The implementation can
+* rely on the .module file being loaded.
+*
+* @see module_enable()
+* @see hook_install()
+* @see hook_modules_enabled()
+*/
+function osg_singout_support_enable()
+{
+	osg_singout_support_reset_table_osg_user();
+	osg_singout_support_reset_table_osg_registration_ext();
+
+}
+
+

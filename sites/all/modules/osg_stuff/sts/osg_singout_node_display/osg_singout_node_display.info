@@ -1,0 +1,4 @@
+name = Singout Node Display
+description = Node themeing for singout module
+package = Chuck Sharpe - Custom Mods
+core = 7.x

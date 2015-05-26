@@ -1,0 +1,5 @@
+name = Testing
+description = Some test shit
+package = Chuck Sharpe - Custom Mods
+core = 7.x
+version = "7.x-1.0"

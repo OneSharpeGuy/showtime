@@ -1,0 +1,7 @@
+name = STS Singout Notifier
+description = Send Singout Notifications
+package = Chuck Sharpe - Custom Mods
+core = 7.x
+dependencies[] = osg_singout_menu 
+dependencies[] = osg_auto_register
+dependencies[] = osg_api

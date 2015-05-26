@@ -1,0 +1,4 @@
+name = Singout Support
+description = Modifications for use in singout functions
+package = Chuck Sharpe - Custom Mods
+core = 7.x

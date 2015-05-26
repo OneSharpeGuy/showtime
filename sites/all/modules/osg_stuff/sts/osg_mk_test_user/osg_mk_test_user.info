@@ -1,0 +1,4 @@
+name = Make Test Users
+description = Make Test Users (for STS)
+package = Chuck Sharpe - Custom Mods
+core = 7.x

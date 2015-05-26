@@ -1,0 +1,48 @@
+<?php /**
+ * @author Charles Sharpe
+ * @copyright 2013
+ */
+
+/**
+ * Impliments Hook_Uninstall
+ * 
+ */
+function osg_blocks_uninstall()
+{
+    //Remove All variables belonging to this module
+    $result = db_query("select name as variable_name from variable where name like 'osg_blocks%'");
+    foreach ($result as $record)
+    {
+        variable_del($record->variable_name);
+    }
+}
+
+function osg_blocks_install()
+{
+    variable_set('osg_blocks_recent_nodecount', 3);
+    variable_set('osg_blocks_recent_nodetypes', array('blog' => 'blog'));
+
+    $result = (boolean)db_query("select count(*) from information_schema.`Tables` where TABLE_NAME='hidden_nodes'")->fetchField();
+    variable_set('osg_blocks_recent_supress_hidden', $result);
+
+    $result = (boolean)db_query("select count(*) from information_schema.`Tables` where TABLE_NAME='content_access'")->fetchField();
+    variable_set('osg_blocks_recent_supress_inaccessible', $result);
+
+    variable_set('osg_blocks_unpublished_content_css', 'style="font-size:x-small"');
+    //variable_set('osg_blocks_unpublished_content_decoration', '');
+    //variable_set('osg_blocks_powered_by_author', $edit['osg_blocks_powered_by_author']);
+    //variable_set('osg_blocks_powered_by_author_url', $edit['osg_blocks_powered_by_author_url']);
+    //variable_set('osg_blocks_powered_by_img', $edit['osg_blocks_powered_by_img']);
+    $pics = variable_get('osg_stuff_pic_path');
+    if (!$pics)
+    {
+        $pubs = variable_get('file_public_path');
+        $pics = $pubs . '/pictures';
+        if (!file_exists($pics))
+        {
+            $pics = $pubs;
+        }
+        variable_set('osg_stuff_pic_path', $pics);
+    }
+
+}

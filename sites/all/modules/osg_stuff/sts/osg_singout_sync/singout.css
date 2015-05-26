@@ -1,0 +1,30 @@
+.teaser-created {
+  display: none;
+}
+.teaser-container.node.node-singout.node-teaser {
+  border-bottom: none;
+}
+
+/* Node Styling */
+.singout-location,
+.singout-venue {
+  font-size: 1.15em;
+  font-style: oblique;
+  font-weight: bolder;
+  line-height: 2em;
+}
+.singout-label {
+  font-weight: bold;
+}
+/* Don't need the user name on the teaser 
+.teaser-meta {
+  display: none;
+}
+*/
+/* Make a psuedo table for Arrival/Perfomrnace Times */
+.singout-timings {
+    border-collapse: separate;
+    margin: 0;
+    padding: 0;
+    width: 65%;
+}

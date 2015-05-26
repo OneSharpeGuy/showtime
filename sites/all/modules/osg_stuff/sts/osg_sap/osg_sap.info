@@ -1,0 +1,4 @@
+name = Singout Attendnace Plan
+description = Shows Users Status on available Singout Items
+package = Chuck Sharpe - Custom Mods
+core = 7.x

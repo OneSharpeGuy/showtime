@@ -1,0 +1,64 @@
+<?php
+
+/**
+* Impliments hook_user_insert
+*
+* @param undefined $edit
+* @param undefined $account
+* @param undefined $category
+*
+*/
+/**
+* 
+* Aside from the fact that this just doesn't work well, it turns out to be a bad idea.  Some STS users keep creating new accounts.'
+*/
+function osg_ksm_user_insert( & $edit, $account, $category)
+{
+    return;
+    $display_name = strtolower(osg_api_get_flat_field($account->field_firstname) .
+        ' ' .osg_api_get_flat_field($user->field_lastname));
+
+    $result       = db_select('osg_known_sts_members', 'a')->fields('a')->condition('display_name',
+        $display_name)->execute();
+
+    if (($result->rowCount()) > 0) {
+        $row = db_select('role', 'r')->fields('r', array('rid','name'))->
+        condition('name', 'member')->execute()->fetchAssoc();
+        if (!isset($edit['roles'][$row['rid']])) {
+            $edit['roles'][$row['rid']] = $row['name'];
+        }
+    }
+}
+/*
+$edit['roles'][2] = "1"
+$edit['roles'][3] = "0"
+$edit['roles'][5] = "0"
+$edit['roles'][4] = "0"
+$edit['roles'][6] = "0"
+$edit['administer_users'] = "1"
+$edit['name'] = "ZETA"
+$edit['mail'] = "ZETA@EXAMPLE.COM"
+$edit['pass'] = "$S$DenXnYyU7DNtbcoa7AQROwmZZDK24OnStCltwWDX.zZ7ujbCkXCW"
+$edit['status'] = "1"
+$edit['notify'] = "0"
+$edit['timezone'] = "America/New_York"
+$edit['signature'] = ""
+$edit['picture'] = ""
+$edit['picture_delete'] = "0"
+$edit['picture_upload'] = ""
+$edit['signature_format'] = "filtered_html"
+$edit['init'] = "ZETA@EXAMPLE.COM"
+$edit['field_firstname']['und'][0]['value'] = "ZETA"
+$edit['field_lastname']['und'][0]['value'] = "ETA"
+$edit['field_voice_part']['und'][0]['tid'] = "6"
+
+*/
+function osg_ksm_form_user_register_form_alter( & $form, & $form_state, $form_id)
+{
+
+    $query = db_select('taxonomy_term_data', 'd');
+    $query->join('taxonomy_vocabulary', 'v', 'd.vid=v.vid');
+    $tid   = $query->fields('d', array('tid'))->orderBy('d.weight')->range(0, 1)->
+    execute()->fetchField();
+    $form['field_voice_part']['und']['#default_value'] = $tid;
+}

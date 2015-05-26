@@ -1,0 +1,5 @@
+name = Registration Mods
+description = Chuck's Mods to the Registration Module
+dependencies[] = registration
+package = Chuck Sharpe - Custom Mods
+core = 7.x

@@ -1,0 +1,167 @@
+<?php
+
+/**
+* @file osg_singout_yandt.module
+* TODO: Enter file description here.
+*/
+
+/**
+* _elap
+* @param undefined $when
+*
+* @return
+*/
+function _elap($when)
+{
+    $blurb = "";
+    $elap  = floor((osg_api_start_of_day($when) - osg_api_start_of_day(time())) /
+        86400);
+
+    if ($elap >= 0) {
+        if ($elap < 8) {
+
+            switch ($elap) {
+                case 0:
+                $blurb = "Today";
+                break;
+                case 1:
+                $blurb = "Tomorrow";
+                break;
+                default:
+                $blurb = ($elap + 1) . " days away";
+
+                break;
+            }
+            // $blurb = "Performance is $blurb";
+        }
+    }
+
+    return $blurb;
+}
+//
+///**
+// * Implements hook_preprocess().
+// */
+//function osg_singout_yandt_preprocess_node( & $variables)
+//{
+//    if (isset($variables['theme_hook_suggestions']))
+//    {
+//        new dbug($variables['theme_hook_suggestions']);
+//    }
+//
+//
+//}
+/**
+* Implements hook_theme_registry_alter().
+*/
+function osg_singout_yandt_theme_registry_alter( & $theme_registry)
+{
+    $extension   = '.tpl.php';
+    $module_path = drupal_get_path('module', 'osg_singout_yandt');
+    $files       = file_scan_directory($module_path, '/' . preg_quote($extension) .
+        '$/');
+
+    foreach ($files as $file) {
+        $template = drupal_basename($file->filename, $extension);
+        $theme    = str_replace('-', '_', $template);
+        debug($theme);
+        if (strpos($theme, '__')) {
+            list($base_theme, $specific) = explode('__', $theme, 2);
+
+        }
+        else {
+            $base_theme = $theme;
+            $specific   = false;
+        }
+
+
+        // Don't override base theme.
+        if (!empty($specific) && isset($theme_registry[$base_theme])) {
+            // new dbug($theme_registry[$base_theme]);
+            $theme_info['template'] = $template;
+            $theme_info['path'] = drupal_dirname($file->uri);
+            if (!empty($theme_registry[$base_theme]['variables'])) {
+                $theme_info['variables'] = $theme_registry[$base_theme]['variables'];
+            }
+            $theme_info['base hook'] = $base_theme;
+            // Other available value: theme_engine.
+            $theme_info['type'] = 'module';
+            $theme_info['theme path'] = $module_path;
+
+
+            $theme_registry[$theme] = $theme_info;
+            new dbug($theme_registry[$theme]);
+        }
+
+    }
+}
+
+/**
+*
+* Implements hook_node_view()
+*
+* Act on a node that is being assembled before rendering.
+*
+* The module may add elements to $node->content prior to rendering. This hook
+* will be called after hook_view(). The structure of $node->content is a
+* renderable array as expected by drupal_render().
+*
+* When $view_mode is 'rss', modules can also add extra RSS elements and
+* namespaces to $node->rss_elements and $node->rss_namespaces respectively for
+* the RSS item generated for this node.
+* For details on how this is used, see node_feed().
+*
+* @see blog_node_view()
+* @see forum_node_view()
+* @see comment_node_view()
+*
+* @param $node
+*   The node that is being assembled for rendering.
+* @param $view_mode
+*   The $view_mode parameter from node_view().
+* @param $langcode
+*   The language code used for rendering.
+*
+* @see hook_entity_view()
+*
+* @ingroup node_api_hooks
+*/
+
+function osg_singout_yandt_node_view($node, $view_mode, $langcode)
+{
+
+    if ($node->type == "singout") {
+
+        $elap = _elap(osg_api_get_flat_field('node', $node, 'field_when'));
+        if ($elap != "") {
+
+            $node->content['singout-eminence'] = array(
+                '#markup'=> $elap,
+                '#weight'=> 10,
+                '#theme' => 'singout-eminence',
+            );
+        }
+    }
+    //debug($node->content,'$node->content',TRUE);
+    return $node;
+}
+function osg_singout_yandt_preprocess_node( & $variables)
+{
+
+    // looks for node--promoted.tpl.php in your theme directory
+    $needed = TRUE;
+    if (!empty($variables['theme_hook_suggestions'])) {
+        foreach ($variables['theme_hook_suggestions'] as $key => $value) {
+            $match = preg_replace('/\W/', '_', $value);
+            if ($match == "node__singout") {
+                $needed = false;
+                break;
+            }
+        }
+
+    }
+    if ($needed) {
+        $variables['theme_hook_suggestions'][] = "node__singout";
+    }
+
+}

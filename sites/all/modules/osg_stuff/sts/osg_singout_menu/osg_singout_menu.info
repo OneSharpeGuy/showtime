@@ -1,0 +1,5 @@
+name = STS  Config Menu
+description = Menu for STS Sinout Module
+package = Chuck Sharpe - Custom Mods
+core = 7.x
+dependencies[] = system 

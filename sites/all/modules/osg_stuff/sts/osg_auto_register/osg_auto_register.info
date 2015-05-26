@@ -1,0 +1,9 @@
+name = Auto Register
+description = Quick and Dirty Registration
+core = 7.x
+package = Chuck Sharpe - Custom Mods
+version = "7.x-1.0"
+dependencies[] = registration
+
+; NEW LINE
+configure = admin/config/osg_auto_register

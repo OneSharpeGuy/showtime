@@ -1,0 +1,11 @@
+name = STS Sing-out Sync
+description = Creates Uniform Sing-out nodes and keeps nodes in sync with Google Calendar
+dependencies[] = block
+dependencies[] = date
+dependencies[] = entity
+dependencies[] = osg_singout_menu
+stylesheets[all][] = singout.css
+package = Chuck Sharpe - Custom Mods
+core = 7.x
+
+configure = admin/config/osg/singout/osg_singout_sync

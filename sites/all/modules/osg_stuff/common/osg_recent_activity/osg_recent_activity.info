@@ -1,0 +1,11 @@
+name = Recent Activity
+description = Block Showing Recent Node Activity
+core = 7.x
+package = Chuck Sharpe - Custom Mods
+
+dependencies[] = block
+dependencies[] = statistics
+dependencies[] = osg_aip
+
+; NEW LINE
+configure = admin/config/osg_recent_activity

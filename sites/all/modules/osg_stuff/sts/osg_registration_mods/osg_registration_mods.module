@@ -1,0 +1,261 @@
+<?php
+
+/**
+* @file osg_registration_mods.module
+*
+* Temporary workaround to redirect users to update their existing registration if it already exists
+* Patch suggested by jason.fisher
+* https://drupal.org /nod /1861364
+* #comment - 6924896'
+*
+**/
+
+function osg_registration_mods_is_edit_path()
+{
+
+	$is_edit_path = false;
+	$this_page = explode('/', current_path());
+	//debug($this_page);
+	if(count($this_page) > 2){
+		//debug($this_page[0].' | '.$this_page[2]);
+		if(($this_page[0] . '|' . $this_page[2]) == 'node|register'){
+			$is_edit_path = true;
+		}
+	}
+	//debug($is_edit_path);
+	return $is_edit_path;
+}
+
+function osg_registration_mods_init()
+{
+
+	global $user, $base_url;
+
+	if(osg_registration_mods_is_edit_path() == 1){
+
+		// Redirect users from node/%/register to register/%/edit
+		$nid = arg(1);
+		$node= node_load(arg(1));
+		if($node->field_registration_type['und'][0]['registration_type'] == 'singout'){
+
+
+			$registrations = registration_load_multiple(false, array(
+					'type'      => 'singout',
+					'author_uid'=> $user->uid,
+					'user_uid'  => $user->uid,
+					'entity_id' => $nid));
+			//debug($registrations);
+
+			foreach($registrations as $key => $registration){
+				if($registration->registration_id > 0){
+					drupal_set_message(t('You are already registered.  You may update your registration below.'));
+					header("Location: $base_url/registration/" . $registration->registration_id .
+						'/edit?destination=node/' . $nid);
+					exit();
+
+				}
+			}
+		}
+		// End register redirect
+
+	}
+
+}
+
+/**
+* Show Expanded Registration State
+*   label and description
+*
+* i.e. Yes - I will attend
+*
+* @return
+*/
+function osg_registration_mods_form_registration_form_alter( & $form, & $form_state,
+	$form_id)
+{
+	global $user;
+
+	$node = node_load($form['#registration_settings']['entity_id']);
+	if($node){
+		if($node->type == 'singout'){
+			$title = drupal_get_title();
+			if($title = 'Home'){
+				drupal_set_title($node->title);
+			}
+			$sql     = "SELECT name, CONCAT(label,' - ',description) AS caption ";
+			$sql     = $sql . "FROM registration_state ";
+			$sql     = $sql . "WHERE show_on_form=1 AND active=1 ";
+			$sql     = $sql . "ORDER BY weight ";
+			$options = db_query($sql)->fetchAllKeyed();
+			$form['state']['#options'] = $options;
+			if($form['who_is_registering']['#options']){
+				if($form['who_is_registering']['#options']['registration_registrant_type_me'] ==
+					"Myself"){
+					if(array_key_exists('who_message', $form)){
+						$form['who_message']['#markup'] = str_ireplace('Myself', 'Yourself', $form['who_message']['#markup']);
+					}
+				}
+				$form['state']['#title'] = variable_get('osg_registration_mods_registration_form_title',
+					$form['state']['#title']);
+				$form['state']['#description'] = variable_get('osg_registration_mods_registration_form_description',
+					$form['state']['#description']);
+			}
+			/*
+			SELECT *
+			FROM osg_users u
+			WHERE is_member=1 AND is_singer=1
+			and uid=1
+			*/
+			$query = db_select('osg_users','u');
+			$query->fields('u');
+			$query->condition('is_member',TRUE);
+			$query->condition('is_singer',TRUE);
+			$query->condition('uid',$user->uid);
+			$result = $query->execute();
+			if( $result->rowCount() == 0){
+				unset($form['who_is_registering']['#options']['registration_registrant_type_me']);
+			}
+			/*
+			SELECT user_name,
+			first_name,
+			last_name
+			FROM osg_users u
+			INNER JOIN osg_registration_ext r ON u.uid=r.uid
+			WHERE is_member=1 AND is_singer=1 AND r.nid=42 AND unregistered =1
+
+			*/
+			$query = db_select('osg_users','u');
+			$query->fields('u',array('user_name','first_name','last_name'));
+			$query->join('osg_registration_ext','r','u.uid=r.uid');
+			$query->leftJoin('registration_state','s','r.state=s.name');
+			$query->condition('is_member',TRUE);
+			$query->condition('is_singer',TRUE);
+			$query->isNull('state');
+			$query->condition('r.nid',$node->nid);
+			$query->orderby('last_name');
+			$query->orderby('first_name');
+			$result = $query->execute();
+			if( $result->rowCount()){
+				$options = array('- Select -');
+				foreach($result as $record){
+
+					$options[$record->user_name] = $record->first_name
+					.' '.$record->last_name
+					.' ('.$record->user_name
+					.') '					;
+				}
+				$form['user']['#type'] = 'select';
+				$form['user']['#description'] = 'Select a user ';
+				$form['user']['#autocomplete_path'] = FALSE;
+				$form['user']['#options'] = $options;
+				$form['user']['#default_value'] = NULL;
+				unset($form['user']['#maxlength']);
+				unset($form['user']['#size']);
+			}
+			else
+			{
+				unset($form['who_is_registering']['#options']['registration_registrant_type_user']);
+			}
+			if(count($form['who_is_registering']['#options']))
+			{
+				$form['who_is_registering']['#default_value'] = min(array_values($form['who_is_registering']['#options']));
+			}
+
+		}
+	}
+	//debug($form);
+	$form['#submit'][] = 'osg_registration_mods_check_user';
+	//new dBug($form);
+	//new dBug($form_state);
+}
+
+/**
+*
+* Implements hook_form()
+*
+*/
+function osg_registration_mods_form_alternate_markup_form()
+{
+	$form['intro'] = array('#markup'=> t('Alternate labels for registration form'),                                                                                                                                                                                                                                                                                                          );
+	$form['osg_registration_mods_registration_form_title'] = array(
+		'#type'         => 'textfield',
+		'#title'        => t('State'),
+		'#description'  => t("Alternate caption for 'State'"),
+		'#default_value'=> variable_get('osg_registration_mods_registration_form_title',
+			'Response'),
+	);
+	$form['osg_registration_mods_registration_form_description'] = array(
+		'#type'         => 'textfield',
+		'#title'        => t('Description'),
+		'#description'  => t("Alternate caption for 'Description'"),
+		'#default_value'=> variable_get('osg_registration_mods_registration_form_description',
+			'Do you intend to attend this event?'),
+	);
+	return system_settings_form($form);
+}
+/**
+* Implement hook_menu().
+*
+* Set up a page with an e-mail contact form on it.
+*/
+function osg_registration_mods_menu()
+{
+
+	$items['admin/config/osg/singout/registration_form_labels'] = array(
+		'title'           => 'STS Singout Registration Mods: Alternate labels',
+		'page callback'   => 'drupal_get_form',
+		'page arguments'                                                                   => array('osg_registration_mods_form_alternate_markup_form'),
+		'access arguments' => array('administer site configuration'),
+		'weight'          => 500,
+
+	);
+	return $items;
+}
+
+/**
+*
+* Implements hook_entity_update()
+*
+* Act on entities when updated.
+*
+* @param $entity
+*   The entity object.
+* @param $type
+*   The type of entity being updated (i.e. node, user, comment).
+*/
+function osg_registration_mods_check_user($form, & $form_state)
+{
+	//debug($form_state);
+	/*
+	There is an anomally that causes registration items to by written missing the user id
+	*/
+
+
+
+	/*
+	SELECT r.registration_id
+	, r.author_uid
+	FROM registration r
+	INNER JOIN osg_users u ON r.author_uid=u.uid AND is_singer AND is_singer
+	WHERE r.user_uid IS NULL
+	*/
+	
+	$query = db_select('registration','r');
+	$query->fields('r',array('registration_id','author_uid'));
+	$query->join('osg_users','u','r.author_uid=u.uid');
+	$query->condition('is_singer',TRUE);
+	$query->condition('is_member',TRUE);
+	$query->isNull('r.user_uid');
+	$result = $query->execute();
+	foreach($result as $record)
+	{
+	db_update('registration')
+	->fields(
+	array('user_uid'=> $record->author_uid			)
+	)
+	->condition('registration_id', $record->registration_id)
+	->execute();
+	}
+	
+}
+

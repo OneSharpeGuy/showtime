@@ -1,0 +1,485 @@
+<?php
+
+/**
+* @file
+* Demonstrates use of the Cron API in Drupal - hook_cron()
+*/
+/**
+* @defgroup osg_spammer Example: Cron
+* @ingroup osg_stuff
+* @{
+* Example using Cron API, including hook_cron() and hook_cron_queue_info().
+*
+* This example is part of the osg_stuff for Developers Project
+* which you can download and experiment with at
+* http://drupal.org/project/osg_stuff
+*/
+/**
+* Implements hook_help.
+*
+* Displays help and module information.
+*
+* @param path
+*   Which path of the site we're using to display help
+* @param arg
+*   Array that holds the current path as returned from arg() function
+*/
+function osg_spammer_help($path, $arg)
+{
+  switch ($path) {
+    case "admin/help#osg_spammer":
+    return '<p>' . t("Checks suspected spammers against BotScout database and if found adds ip address to blocked ip list") .
+    '</p>';
+    break;
+  }
+}
+/**
+* Implements hook_menu().
+*/
+function osg_spammer_menu()
+{
+  $items['admin/config/system/osg_spammer'] = array(
+    'title'          => 'Spam/Bot Repellant',
+    'page callback'  => 'drupal_get_form',
+    'page arguments'  => array('osg_spammer_form'),
+    'access callback'=> true,
+  );
+  return $items;
+}
+/**
+* The form to provide a link to cron.php.
+*/
+function osg_spammer_form($form, & $form_state)
+{
+  $show_time = variable_get('osg_spammer_next_execution', time());
+  $elap      = $show_time - time();
+  $blurb     = 'Spam/Bot Repellant cron job will execute at ' . date_iso8601($show_time);
+  $blurb     = $blurb . ' or in ' . $elap . ' seconds.';
+
+  $form['configuration']['exection_time'] = array(
+    '#type'  => 'markup',
+    '#markup'=> "<p>$blurb</p>",
+  );
+  $form['configuration']['osg_spammer_interval'] = array(
+    '#type'            => 'select',
+    '#title'           => t('Cron interval'),
+    '#description'     => t('Time after which osg_spammer_cron will respond to a processing request.'),
+    '#default_value'   => variable_get('osg_spammer_interval', 60 * 60),
+    '#options'          => array(
+      300         => t('5 minutes'),
+      1800        => t('30 minutes'),
+      3600        => t('1 hour'),
+      21600       => t('6 hours'),
+      43200       => t('12 hours'),
+      60 * 60 * 24=> t('1 day'),
+    ),
+    '#element_validate' => array('osg_spammer_osg_spammer_interval_validate'),
+    '#states'           => array('visible' => array(':input[name="osg_spammer_meter_pings"]' =>
+        array('checked'=> false),),),
+  );
+  $form['configuration']['osg_spammer_maxhits'] = array(
+    '#type'         => 'textfield',
+    '#title'        => t('Maximum Hit Count'),
+    '#size'         => 5,
+    '#description'  => t('Maximum number of hits before host is considered spammer'),
+    '#default_value'=> variable_get('osg_spammer_maxhits', 10),
+  );
+  $form['configuration']['osg_spammer_reping'] = array(
+    '#type'         => 'select',
+    '#title'        => t('Re-ping interval'),
+    '#description'  => t('Time after which BoutScout is re-pinged for specific ip addresses.'),
+    '#default_value'=> variable_get('osg_spammer_reping', 86400),
+    '#options'       => array(
+      3600        => t('1 hour'),
+      3600 * 2    => t('2 hours'),
+      3600 * 6    => t('6 hours'),
+      3600 * 12   => t('12 hours'),
+      60 * 60 * 24=> t('1 day'),
+      86400 * 2   => t('2 days'),
+      86400 * 3   => t('3 days'),
+      86400 * 5   => t('5 days'),
+      86400 * 7   => t('1 week'),
+      86400 * 14  => t('2 weeks'),
+      86400 * 21  => t('3 weeks'),
+      86400 * 30  => t('30 days'),
+      86400 * 60  => t('60 days'),
+      86400 * 90  => t('90 days'),
+      86400 * 180 => t('180 days'),
+    ),
+  );
+  $form['configuration']['osg_spammer_botscout_key'] = array(
+    '#type'         => 'textfield',
+    '#title'        => t('BotScout API Key'),
+    '#size'         => 25,
+    '#desciption'   => t('API key from <a href="http://www.botscout.com/getkey.htm">BotScout.com</a>'),
+    '#default_value'=> variable_get('osg_spammer_botscout_key', null),
+  );
+  $form['configuration']['osg_spammer_daily_limit'] = array(
+    '#type'         => 'textfield',
+    '#title'        => t('Maximum Daily Limit'),
+    '#size'         => 5,
+    '#description'  => t('Maximum number of queries per day to BotScout server'),
+    '#default_value'=> variable_get('osg_spammer_daily_limit', 300),
+  );
+  $form['configuration']['osg_spammer_meter_pings'] = array(
+    '#type'         => 'checkbox',
+    '#title'        => t('Meter Pings'),
+    '#size'         => 5,
+    '#description'  => t('Adjust firing interval according to Daily Limit'),
+    '#default_value'=> variable_get('osg_spammer_meter_pings', false),
+  );
+  $form['configuration'][]['#submit'][] = 'osg_spammer_form_submit';
+  return system_settings_form($form);
+}
+/**
+* Implements hook_cron().
+*
+* hook_cron() is the traditional (pre-Drupal 7) hook for doing "background"
+* processing. It gets called every time the Drupal cron runs and must decide
+* what it will do.
+*
+
+*/
+function osg_spammer_cron()
+{
+  // We usually don't want to act every time cron runs (which could be every
+  // minute) so keep a time for the next run in a variable.
+  if (time() >= variable_get('osg_spammer_next_execution', 0)) {
+    $interval      = variable_get('osg_spammer_interval', 300);
+    $pings_per_day = variable_get('osg_spammer_daily_limit', 0);
+    $today         = date('Y-m-d');
+    $meter_pings   = variable_get('osg_spammer_meter_pings', false);
+
+    $stats       = osg_spammer_get_ping_stats();
+    $pings_today = $stats->pings_today;
+
+    $sql         = "SELECT d.* ";
+    $sql         = $sql . ", CASE ";
+    $sql         = $sql . "WHEN id IS NULL THEN 0 ";
+    $sql         = $sql . "ELSE 1 ";
+    $sql         = $sql . "END AS existing ";
+    $sql         = $sql . " ";
+    $sql         = $sql . "FROM   (SELECT   a.hostname ";
+    $sql         = $sql . ", COUNT(* ) hit_count ";
+    $sql         = $sql . "FROM     accesslog a ";
+    $sql         = $sql . "LEFT JOIN blocked_ips b ";
+    $sql         = $sql . "ON b.ip = a.hostname ";
+    $sql         = $sql . "LEFT JOIN osg_spammers c ";
+    $sql         = $sql . "ON a.hostname = c.hostname ";
+    $sql         = $sql . "WHERE    (PATH IN ('user/password','user/login','user/register')) ";
+    $sql         = $sql . "AND (uid = 0) ";
+    $sql         = $sql . "AND b.iid IS NULL ";
+    $sql         = $sql . "AND (a.TIMESTAMP > COALESCE(last_checked,0)) ";
+    $sql         = $sql . "GROUP BY a.hostname ";
+    // Set a limit as to how many times you think a valid user might appear.
+    $floor       = variable_get('osg_spammer_maxhits', 5);
+    if ($floor > 0) {
+      $sql = $sql . 'HAVING COUNT(*)>=' . $floor;
+    }
+    $sql   = $sql . ") d ";
+    $sql   = $sql . "LEFT JOIN osg_spammers e ";
+    $sql   = $sql . "ON d.hostname = e.hostname ";
+    $sql   = $sql . "WHERE coalesce(next_check,UNIX_TIMESTAMP())<=UNIX_TIMESTAMP() ";
+    $limit = 0;
+    //Limit the result set, so I dont overtax the BotScout server
+    if ($meter_pings) {
+      $limit = 5;
+    }
+    else {
+      switch ($interval) {
+        case 3600:
+        $limit = 10;
+        break;
+        case 86400:
+        $limit = 20;
+        break;
+        default:
+        $limit = 5;
+      }
+    }
+    ;
+   
+    $limit = floor(($pings_per_day - $stats->pings_today) / ($stats->
+        seconds_til_tomorrow / variable_get('metered_interval', $interval)));
+    if ($limit < 1) {
+      $limit = 1;
+    }
+    $sql    = $sql . ' LIMIT ' . $limit;
+    //debug($sql);
+    $result = db_query($sql);
+    if ($result->rowCount()) {
+      $diag       = '';
+      $botdata    = '';
+      $APIKEY     = '';
+      $USEXML     = '';
+      $XMAIL      = '';
+      $XIP        = '';
+      $multi_test = '';
+      $ch         = '';
+      $botdata    = ''; ////////////////////////
+      // your optional API key (don't have one? get one here: http://botscout.com /
+      $APIKEY     = variable_get('osg_spammer_botscout_key', ''); ////////////////////////
+      // use XML output responses?
+      // '1' to use XML, '0' to use standard responses
+      $USEXML     = '0';
+      foreach ($result as $row) {
+        $XIP = $row->hostname;
+        //debug($pings_today, '$pings_today');
+        //debug($pings_per_day, '$pings_per_day');
+        if ($pings_today < $pings_per_day) {
+          $test_string   = "http://botscout.com/test/?ip=$XIP&key=$APIKEY";
+          // test IP - reliable
+          $returned_data = '';
+          //$ch = curl_init($test_string);
+          //    curl_setopt($ch, CURLOPT_HEADER, 0);
+          //    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+          //    $returned_data = curl_exec($ch);
+          //    curl_close($ch);
+          //
+          /*
+          In the event of an API error or query limit, the API will return an exclamation
+          mark(!)followed by a single space, and then the text of the error message . for
+          example : !Sorry, but that doesn't appear to be a valid API key.
+
+          Documentation on the BotScout API can be found at http://botscout.com/api.htm
+          */
+          $pinged        = 1;
+          $pings_today   = $pings_today + 1;
+          $next_check    = variable_get('osg_spammer_reping
+            ', 86400) + time();
+        }
+        else {
+          $returned_data = "?|?|?";
+          $pinged        = 0;
+          $next_check    = $stats->start_of_tomorrow;
+        }
+        //debug($returned_data);
+        if (substr($returned_data, 1, 2) <> "! ") {
+
+          if ($row->existing == 0) {
+            $sql = "INSERT INTO osg_spammers(hostname,insert_time,botdata,next_check,hits,ping_count)VALUES('
+            $XIP'," . time() . ",'$returned_data
+            ',$next_check," . $row->hit_count . ",$pinged)";
+          }
+          else {
+            $sql = "UPDATE osg_spammers ";
+            $sql = $sql . "SET    hits = hits+" . $row->hit_count;
+            $sql = $sql . ", last_checked = " . time();
+            $sql = $sql . ", next_check = $next_check ";
+            $sql = $sql . ", botdata = '$returned_data' ";
+            $sql = $sql . ", ping_count = ping_count+$pinged ";
+            $sql = $sql . "WHERE  hostname = '$XIP' ";
+          }
+          //debug($sql);
+          db_query($sql);
+        }
+      }
+
+    }
+    $sql = "INSERT INTO blocked_ips (ip) ";
+    $sql = $sql . "SELECT hostname ";
+    $sql = $sql . "FROM osg_spammers s ";
+    $sql = $sql . "LEFT JOIN blocked_ips b ON hostname=ip ";
+    $sql = $sql . "WHERE SUBSTRING(botdata,1,1)IN('Y') AND b.ip IS NULL ";
+    db_query($sql);
+    $sql = "DELETE b ";
+    $sql = $sql . "FROM   blocked_ips b ";
+    $sql = $sql . "INNER JOIN osg_spammers s ";
+    $sql = $sql . "ON b.ip = s.hostname ";
+    $sql = $sql . "WHERE  SUBSTRING(botdata,1,1) <> 'Y' ";
+    db_query($sql);
+    if ($meter_pings) {
+      $metered_interval = osg_spammer_metered_interval($floor, $interval, $pings_per_day);
+
+      variable_set('osg_spammer_metered_interval', $metered_interval);
+      $target_time      = time() + $metered_interval;
+
+    }
+    else {
+      $target_time = time() + $interval;
+      variable_del('osg_spammer_metered_interval');
+    }
+    variable_set('osg_spammer_next_execution', $target_time);
+  }
+}
+/**
+* Simple reporter for the workers.
+*
+* @param $worker
+*   (integer) worker number
+* @param $item
+*   (object) the $item which was stored in the cron queue.
+*/
+function osg_spammer_queue_report_work($worker, $item)
+{
+  if (!empty($GLOBALS['osg_spammer_show_status_message'])) {
+    drupal_set_message(t('Queue@worker worker processed item with sequence@
+        sequence created at@time', array('@worker'  => $worker,
+          '@sequence'=> $item->sequence,'@time'    => date_iso8601($item->created))));
+  }
+  watchdog('osg_spammer', 'Queue@worker worker processed item with sequence@
+    sequence created at@time', array('@worker'  => $worker,
+      '@sequence'=> $item->sequence,'@time'    => date_iso8601($item->created)));
+}
+function osg_spammer_form_validate($form, & $form_state)
+{
+  osg_spammer_column_sync('osg_spammers');
+  //debug($form_state);
+  if ($form_state['complete form']['configuration']['osg_spammer_meter_pings']['#checked']) {
+    variable_set('osg_spammer_next_execution', 0);
+    form_set_value($form['configuration']['osg_spammer_interval'],
+      osg_spammer_metered_interval($form_state['values']['osg_spammer_maxhits'], $form_state['values']['osg_spammer_interval'],
+        $form_state['values']['osg_spammer_daily_limit']), & $form_state);
+  }
+}
+function osg_spammer_osg_spammer_interval_validate($element, & $form_state)
+{
+  //debug($element, '$element');
+  //debug($form_state, '$form_state');
+  if ($element['#title'] == "Cron interval") {
+    //For real real, validation isn't needed, because element is a selection
+    // If the value has changed, update the next execution time
+    if ($element['#value'] <> $element['#default_value']) {
+      //$next_execution = variable_get('osg_spammer_next_execution', time());
+      //$last_execution = $next_execution - variable_get('osg_spammer_interval', 60);
+      //Unreliable because procedure could have been run manually
+      //instead, write the time to now, and it will be adjusted when next run.
+      $new_execution_time = time() + $element['#value']; //Now write the new value
+      variable_set('osg_spammer_next_execution', $new_execution_time);
+    }
+  }
+}
+/**
+* Sync Table Columns
+*  osg_spammer_column_sync
+*  @param table_name
+*    Name of the Table for which to sync columns
+*
+*/
+function osg_spammer_column_sync($table_name)
+{
+  $fields = osg_spammer_fields();
+  $schema = drupal_get_schema($table_name);
+  //retrieve a record to ensure this schema matches what's in the database
+  $result = db_query("select * from $table_name LIMIT 1;")->fetchAssoc();
+  //debug($result, '$result', true);
+  foreach ($result as $column_name => $value) {
+    if (!array_key_exists($column_name, $schema['fields'])) {
+      db_drop_field($table_name, $column_name);
+      drupal_set_message($column_name . " dropped from table $table_name", 'status');
+    }
+  }
+  //debug($schema);
+  foreach ($fields[$table_name] as $field_name => $field) {
+    if ($result) {
+      if (!array_key_exists($field_name, $result)) {
+        unset($schema['fields'][$field_name]);
+      }
+    }
+    if (!array_key_exists($field_name, $schema['fields'])) {
+      db_add_field($table_name, $field_name, $field);
+      drupal_set_message($field_name . " added to table $table_name", 'status');
+    }
+  }
+}
+
+/**
+* Fields for this module
+*
+* This enables me to add fields to the table on the fly.
+* New fields added however should be not null, no default
+*/
+function osg_spammer_fields()
+{
+  $fields = array(
+    'osg_spammers'           => array(
+      'id'           => array(
+        'description'=> 'Identity Column',
+        'type'       => 'serial',
+        'unsigned'   => true,
+        'not null'   => true,
+      ),
+      'hostname'     => array(
+        'description'=> 'IP address',
+        'type'       => 'varchar',
+        'length'     => 40,
+        'not null'   => true,
+        'default'    => ''),
+      'hits'         => array(
+        'description'=> 'Time row was written to table',
+        'type'       => 'int',
+        'not null'   => true,
+        'default'    => 0),
+      'ping_count'   => array(
+        'description'=> 'Number of times this BotScout was querried for this row',
+        'type'       => 'int',
+      ),
+      'insert_time'  => array(
+        'description'=> 'Time row was written to table',
+        'type'       => 'int',
+        'not null'   => true,
+        'default'    => 0),
+      'botdata'      => array(
+        'description'=> 'Value return from BotScout API',
+        'type'       => 'varchar',
+        'length'     => 512,
+        'not null'   => false,
+        'default'    => null),
+      'last_checked' => array(
+        'description'=> 'last time botscout was pinged for this value',
+        'type'       => 'int',
+        'not null'   => false,
+        'default'    => null,
+      ),
+      'next_check'   => array(
+        'description'=> 'time after which botscout will be repinged for value',
+        'type'       => 'int',
+        'not null'   => false,
+        'default'    => null,
+      ),
+    ),
+    'as_yet_undefined_table' => array(),
+  );
+  return $fields;
+}
+/**
+* Resolve ping rate
+*
+* */
+function osg_spammer_metered_interval($hit_count_floor, $interval, $pings_per_day)
+{
+  $stats            = osg_spammer_get_ping_stats();
+  $metered_interval = (int)($stats->seconds_til_tomorrow / ($pings_per_day - $stats->
+      pings_today) * $hit_count_floor);
+  if ($metered_interval < $interval) {
+    $metered_interval = $interval;
+  }
+  return $metered_interval;
+
+}
+/**
+* Determine Ping stats from database
+*
+*
+*/
+function osg_spammer_get_ping_stats()
+{
+  $sql   = "SELECT coalesce(sum(coalesce(ping_count,1)),0)                AS pings_today ";
+  $sql   = $sql . ", unix_timestamp()                                     AS time_right_now ";
+  $sql   = $sql . ", curdate()                                            AS date_today ";
+  $sql   = $sql . ", now()                                                AS current_date_time_string ";
+  $sql   = $sql . ", unix_timestamp(curdate())                            AS start_of_day ";
+  $sql   = $sql . ", unix_timestamp() - unix_timestamp(curdate())         AS seconds_gone_today ";
+  $sql   = $sql . ", unix_timestamp(curdate()) - unix_timestamp() + 86400 AS seconds_til_tomorrow ";
+  $sql   = $sql . ", unix_timestamp(curdate()) + 86400                    AS start_of_tomorrow ";
+  $sql   = $sql . "FROM   osg_spammers a ";
+  $sql   = $sql . "WHERE  FROM_UNIXTIME(coalesce(last_checked,insert_time),'%Y-%m-%d') = curdate() ";
+  debug($sql);
+  $stats = db_query($sql)->fetchObject();
+  debug($stats);
+  return $stats;
+}
+
+/**
+* @} End of "defgroup osg_spammer".
+*/

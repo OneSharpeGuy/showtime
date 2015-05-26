@@ -1,0 +1,173 @@
+<?php
+
+/**
+* @file
+* Module file for osg_banner_populater
+*/
+
+
+/**
+* Implements hook_form_FORM_ID_alter().
+*/
+function osg_banner_populater_form_system_theme_settings_alter( & $form, & $form_state,
+  $form_id)
+{
+  // Modification for the form with the given form ID goes here. For example, if
+  // FORM_ID is "user_register_f(rm" this code would run only on the user
+  // registration form.
+  if (!empty($form['var']['#value'])) {
+    if ($form['var']['#value'] == 'theme_cs_marinelli_settings') {
+      $form['banner']['osg_banner_populater_rescan_folder'] = array(
+        '#type'  => 'checkbox',
+        '#title' => t('Rescan Banner Folder'),
+        '#weight'=> 100,
+      );
+      $form['#submit'][] = 'osg_banner_populater_rescan';
+
+      //new dbug($form);
+    }
+  }
+}
+/**
+* Implements _marinelli_install (sort of)
+* _populate banner
+*
+*
+* @return
+*/
+function _populate_banner()
+{
+  // Deafault data
+  $file    = new stdClass;
+  $banners = array();
+  // Source base for images
+
+  $thumbs = drupal_get_path('theme', 'marinelli') . '/thumbs/';
+  // $default_banners = theme_get_setting('default_banners');
+
+
+  $pics   = file_scan_directory('public://banner', "([^\\s]+(\\.(?i)(/bmp|jpg|gif|png))$)",
+    array('recurse'=> false));
+  $default_banners = variable_get('theme_marinelli_banner_settings', array());
+  //get from array of defined images, a list of file names.
+  $existing = array();
+  //Rebuild the default banners array with the uri as the key
+  foreach ($default_banners as $key => $value) {
+    $existing[$value['image_path']] = $value;
+  }
+
+
+  foreach ($existing as $key => $value) {
+    if (array_key_exists($key, $pics)) {
+      unset($pics[$key]);
+    }
+  }
+
+  //
+  //    foreach ($pics as $key => $value)
+  //    {
+  //        /* $default_banners
+  //        array (
+  //        'image_path' => 'img / advertise / 1.jpg',
+  //        'image_title' => 'Title for image 1',
+  //        'image_description' => 'Description for image 1',
+  //        'image_published' => true,
+  //        */
+  //        /*
+  //        file_scan_directory
+  //        array (
+  //        'public://banner / thumb / 027.jpg' =>
+  //        stdClass::__set_state(array(
+  //        'uri' => 'public://banner / thumb / 027.jpg',
+  //        'filename' => '027.jpg',
+  //        'name' => '027',
+  //        )),
+  //        */
+  //        /*
+  //        array (
+  //        'image_path' => 'public://banner / 1.jpg',
+  //        'image_thumb' => 'public://banner / thumb / 1.jpg',
+  //        'image_title' => 'Title for image 1',
+  //        'image_description' => 'Description for image 1',
+  //        'image_url' => ' < front > ',
+  //        'image_weight' => 0,
+  //        'image_published' => true,
+  //        'image_visibility' => ' * ',
+  //        ),
+  //        */
+  //        $image['image_path'] = $value->uri;
+  //        $image['image_title'] = '';
+  //        $image['image_description'] = '';
+  //        $image['image_published'] = true;
+  //        $image['basename'] = $value->filename;
+  //        $image['unsaved'] = true;
+  //        $default_banners[] = $image;
+  //
+  //    }
+  //
+  /**
+  *  $data = $image;
+  *     $image = image_load($data['image_path']);
+  *     debug($data);
+  *     debug($image);
+  *     $small_img = image_scale($image, 300, 100);
+  *     debug($small_img);
+  *     $image->source = 'public://banner/thumb/' . $data['basename'];
+
+  *     debug($image);
+  *     return;
+  */
+  $banners = $default_banners;
+  foreach ($pics as $key => $value) {
+    $data = array();
+    $data['image_path'] = $value->uri;
+    $data['image_title'] = '';
+    $data['image_description'] = '';
+    $data['image_published'] = true;
+    $data['image_weight']=10;
+
+    $file = osg_api_get_managed_file($data['image_path'], array('save_unmanaged'=> TRUE));
+    /**
+    *             $file->uri = $data['image_path'];
+    *             $file->filename = $data['basename'];
+    *             $file->name = drupal_basename($file->uri);
+    */
+    if ($file) {
+      $destination = 'public://banner/thumb/' . $value->filename;
+
+      if ($img = file_copy($file, $destination, FILE_EXISTS_REPLACE)) {
+        $banner    = $data;
+        $image     = image_load($destination);
+        //If I could not load the image, don't add this
+
+
+        $small_img = image_scale($image, 300, 100);
+        $image->source = $destination;
+        image_save($image);
+
+        $banner['image_thumb'] = $image->source;
+
+        $banner['image_url'] = '<front>';
+        //$banner['image_weight'] = 0;
+        $banner['image_visibility'] = '*';
+
+        unset($banner['basename']);
+        //$banner = array_merge($banner, $data);
+        debug($banner);
+        $banners[] = $banner;
+      }
+    }
+  }
+  // Save banner data
+  marinelli_set_banners($banners);
+
+}
+
+
+function osg_banner_populater_rescan($form_id, & $form_state)
+{
+  //    debug($form_state['values']);
+  if (!empty($form_state['values']['osg_banner_populater_rescan_folder'])) {
+    _populate_banner();
+  }
+}

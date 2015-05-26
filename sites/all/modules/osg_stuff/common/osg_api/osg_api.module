@@ -1,0 +1,1433 @@
+<?php
+
+include_once 'osg_api_system_settings.inc';
+/**
+ * Implements hook_menu().
+ */
+function osg_api_menu()
+{
+
+    $items = array();
+    $items['admin/config/osg'] = array(
+        'title' => "Chuck's Config Menu",
+        'description' => 'OSG Custom Configuration Items',
+        'page callback' => 'system_admin_menu_block_page',
+        'access callback' => true,
+        //'access arguments' => user_access('access administration pages'),
+        'file' => 'system.admin.inc',
+        'file path' => drupal_get_path('module', 'system'),
+        'weight' => -500,
+        'position' => 'left',
+
+        );
+    $items['admin/config/osg/autocomplete'] = array(
+        'title' => '',
+        'access callback' => true,
+        'type' => MENU_CALLBACK,
+        );
+    $items['admin/config/osg/autocomplete/user'] = array(
+        'title' => '',
+        'page callback' => 'osg_api_autocomplete_user',
+        'access callback' => true,
+        'access arguments' => array('autocomplete'),
+        'type' => MENU_CALLBACK,
+        );
+    $items['admin/config/osg/misc_variables'] = array(
+        'title' => 'Misc Variables',
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('osg_api_misc_variables_form'),
+        'access arguments' => array('configure texting'),
+        // 'type'            => MENU_SUGGESTED_ITEM,
+        );
+
+    return $items;
+}
+function osg_api_autocomplete_user($string)
+{
+    $matches = array();
+
+    if ($string)
+    {
+        $items = array_map('trim', explode(',', $string));
+        $last_item = array_pop($items);
+        $prefix = implode(', ', $items);
+
+        $result = db_select('users')->fields('users', array('name'))->condition('name',
+            '%' . db_like($last_item) . '%', 'LIKE')->range(0, 10)->execute();
+        foreach ($result as $user)
+        {
+            if (!in_array($user->name, $items))
+            {
+                $value = !empty($prefix) ? $prefix . ', ' . $user->name : $user->
+                    name;
+                $matches[$value] = check_plain($value);
+            }
+        }
+    }
+    drupal_json_output($matches);
+}
+function osg_api_GUID()
+{
+    //MySQL generates a much better GUID than PHP
+    $guid = strtoupper(db_query("SELECT UUID() AS GUID")->fetchField());
+    return $guid;
+}
+function osg_api_coalesce()
+{
+    $args = func_get_args();
+    foreach ($args as $arg)
+    {
+        if (!empty($arg))
+        {
+            return $arg;
+        }
+    }
+    return null;
+}
+/**
+ * Get flat value from field
+ *
+ * @param string $entity_type
+ * @param object $entity
+ * @param string $field_name
+ * @param string $langcode
+ *
+ */
+function osg_api_get_flat_field($entity_type, $entity, $field_name, $langcode = null)
+{
+
+    $value = field_get_items((string )$entity_type, $entity, $field_name, $langcode);
+    //drupal_set_message(var_export($value,true));
+    /*Should look like
+
+    array ( 'und' => array ( 0 => array ( 'value' => '7779311', ), ), )
+
+    */
+    if (is_array($value))
+    {
+        $stack = array_values($value);
+        //debug($stack,'stack');
+        if (count($stack))
+        {
+
+            $value = $stack[0];
+            if (isset($value['value']))
+            {
+                $value = $value['value'];
+            }
+        }
+    }
+    //debug( $value,"$field_name");
+    return $value;
+}
+/**
+ * Expands a value into [language][delta][value] psuedo field, kinda
+ *
+ * @param undefined $value
+ * @param undefined $langcode
+ *
+ */
+function osg_api_push_fat_value($value, $langcode = LANGUAGE_NONE)
+{
+    //This probably won't work for a real language'
+    $push[$langcode] = array();
+    if (gettype($value) <> 'array')
+    {
+        $push[$langcode][]['value'] = $value;
+    }
+    else  $push[$langcode][] = $value;
+
+    return $push;
+}
+/**
+ * Pop the top value from the array.  If shrink is true, value is removed from the array
+ *
+ * @param array $value
+ * @param boolean $shrink
+ *
+ */
+
+function osg_api_pop_value(&$value, $shrink = false)
+{
+    $legend = array_keys($value);
+    $popper = $value[$legend[0]];
+    if (gettype($popper) == 'array')
+    {
+        $popper = osg_api_pop_value($popper);
+    }
+    if ($shrink)
+    {
+        unset($value[$legend[0]]);
+    }
+    return $popper;
+}
+/**
+ * Return an Array representing the call stack
+ *
+ * first index in the array is 1 (0 would always be the name of this function)
+ *
+ * @return
+ */
+function osg_api_GetCallingMethodName($level = false)
+{
+    $e = new Exception();
+    $trace = $e->getTrace();
+
+    //Build an array of the calling function namespace
+    $indexes = array_keys($trace);
+
+    //position 0 would be the line that called this function so we ignore it
+    for ($i = 1; $i < count($indexes); $i++)
+    {
+        $stack[$i] = $trace[$indexes[$i]]['function'];
+    }
+    if (is_numeric($level))
+    {
+        return $stack[$level];
+    }
+    else
+    {
+        return $stack;
+
+    }
+
+}
+/**
+ * Builds an array like
+ * array (
+ *    'never' => 0,
+ *    '6 hours' => 21600,
+ *    '12 hours' => 43200,
+ *    '18 hours' => 64800,
+ *    '1 day' => 86400,
+ *    '2 days' => 172800,
+ *    '3 days' => 259200,
+ *    )
+ *
+ * @param string $term
+ * @param int $starter
+ * @param int $stopper
+ * @param int $incr
+ * @param array $bundle
+ *
+ * @return
+ */
+function osg_api_time_selection_builder($term, $starter, $stopper, $incr = 1, &
+    $bundle = array(), $cron_safe = false)
+{
+    if ($cron_safe)
+    {
+        $min = variable_get('cron_safe_threshold', 0);
+
+    }
+    else
+    {
+        $min = -1;
+    }
+    $term_def = array(
+        'second' => 1,
+        'minute' => 60,
+        'hour' => 3600,
+        'day' => 86400,
+        'week' => 604800,
+        );
+    $floor = 0;
+    if (count($bundle))
+    {
+        $fudge = array_values(array_reverse($bundle));
+        $floor = $fudge[0];
+    }
+    if ($floor < $min)
+    {
+        $floor = $min;
+    }
+    $value = $term_def[$term];
+    for ($counter = $starter; $counter <= $stopper; $counter = $counter + $incr)
+    {
+        if ($value * $counter > $floor)
+        {
+            $plural = $counter == 1 ? '' : 's';
+            $key = $value * $counter;
+            $bundle[$key] = t($counter . ' ' . $term . $plural);
+        }
+
+    }
+    return $bundle;
+}
+//============================================================================================
+/**
+ * From http://drupal.stackexchange.com/users/6755/zydrunas-tamasauskas
+ * posted to
+ * http://drupal.stackexchange.com/questions/28431/drupal-mail-in-html
+ */
+/**
+ * Concatenate and wrap the e-mail body for plain-text mails.
+ *
+ * @param $message
+ *   A message array, as described in hook_mail_alter().
+ *
+ * @return
+ *   The formatted $message.
+ */
+function osg_api_mail_format(array $message)
+{
+    $message['body'] = implode("\n\n", $message['body']);
+
+    if ($message['module'] == 'your_module')
+    {
+        $body = $message['body'];
+        $message['body'] = array();
+
+        // Convert any HTML to plain - text.
+        $message['body']['plain'] = drupal_html_to_text($body);
+        $message['body']['plain'] = drupal_wrap_mail($message['body']['plain']);
+
+        // Wrap the mail body for sending.
+        $message['body']['html'] = drupal_wrap_mail($body);
+    }
+    else
+    {
+        $message['body'] = drupal_wrap_mail($message['body']);
+    }
+
+    return $message;
+}
+/**
+ * Build a Link for the given node
+ *
+ * @param int $nid Node ID
+ * @param string $text Text to be Displayed
+ *
+ * *
+ * @options is an array of tags to be written
+ * the first dimension is the name of the tag
+ * 2nd dimension is tag attributes
+ *
+ *
+ *  array (
+ *      'span' => //The 1st demision is name of the tag
+ *      array (
+ *          '#weight'  => - 10,//Weight determines the order in which tags are written
+ *          'attribute'=>'' //All other key value pairs will be written as key = "value"
+ *          'class' => 'this-is-my-class',
+ *
+ *      ),
+ *      'a'    =>
+ *      array (
+ *          'target' => '_blank',
+ *          'href'   => 'node/12',//href node will be resolved from $nid and should not be passed
+ *          '#weight'=> 65535,
+ *
+ *      ),
+ *  )
+ *
+ * * attributes begininng with a hashtag will not be written
+ * blank attributes will not be written
+ *
+ *
+ * @return
+ */
+function osg_api_node_link($nid, $text, $options = array())
+{
+    global $base_url;
+
+    if (!isset($options['a']))
+    {
+        $options['a'] = array();
+    }
+    $options['a']['href'] = $base_url . "/node/$nid";
+    $options['a']['#weight'] = 65535;
+    $options['a']['target'] = '_blank';
+
+    $pivot = array();
+    foreach ($options as $key => $item)
+    {
+        if (isset($item[$key]['#weight']))
+        {
+            $weight = intval($item[$key]['#weight']);
+        }
+        else
+        {
+            $weight = 0;
+        }
+        $pivot[] = $weight;
+    }
+    array_multisort($pivot, $options);
+
+    $anchor = array(
+        'open' => '',
+        'close' => '',
+        );
+    foreach ($options as $tag => $items)
+    {
+        $anchor['open'] = $anchor['open'] . "<$tag";
+        foreach ($items as $attribute => $value)
+        {
+            if (substr($attribute, 0, 1) <> "#")
+            {
+                if ($value <> '')
+                {
+                    $anchor['open'] = $anchor['open'] . ' ' . $attribute . '="' .
+                        $value . '"';
+                }
+            }
+        }
+        $anchor['open'] = $anchor['open'] . ">";
+        $anchor['close'] = "</$tag>";
+    }
+
+    return $anchor['open'] . $text . $anchor['close'];
+
+}
+function osg_api_get_local_date($ztimestamp = "", $format = 'D, F jS, Y h:i a')
+{
+    if (intval($ztimestamp) == 0)
+    {
+        $ztimestamp = time();
+    }
+    $zone = date_default_timezone_get();
+    $site_zone = variable_get('date_default_timezone');
+    if ($zone <> $site_zone)
+    {
+        date_default_timezone_set($site_zone);
+    }
+    return date($format, $ztimestamp);
+}
+function osg_api_start_of_day($ztimestamp = "", $format = "Y-m-d")
+{
+    $this_day = osg_api_get_local_date($ztimestamp, $format);
+    return strtotime($this_day);
+}
+
+/**
+ *
+ * Builds an array like
+ * array (
+ *    'never' => 0,
+ *    '6 hours' => 21600,
+ *    '12 hours' => 43200,
+ *    '18 hours' => 64800,
+ *    '1 day' => 86400,
+ *    '2 days' => 172800,
+ *    '3 days' => 259200,
+ *    )
+ *
+ * @param $control - is the control array.  If array is null
+ * array(
+ * array('minute',15,59,15),
+ * array('hour',1,24,6),
+ * array('day',1,6,1),
+ * array('week',1,6,1),
+ * )
+ * will be used
+ * @param $cron_safe
+ *
+ * @return
+ */
+
+function osg_api_time_selection($control, $cron_safe = false)
+{
+    if ($cron_safe)
+    {
+        $min = variable_get('cron_safe_threshold', 0);
+
+    }
+    else
+    {
+        $min = -1;
+    }
+    $term_def = array(
+        'second' => 1,
+        'minute' => 60,
+        'hour' => 3600,
+        'day' => 86400,
+        'week' => 604800,
+        );
+    if (is_null($control))
+    {
+        $control = array(
+            array(
+                'minute',
+                15,
+                59,
+                15),
+            array(
+                'hour',
+                0,
+                24,
+                1),
+            array(
+                'day',
+                1,
+                6,
+                1),
+            array(
+                'week',
+                1,
+                6,
+                1),
+            );
+    }
+    $control = _set_control_keys($control);
+    $bundle = array();
+
+    foreach ($control as $item)
+    {
+        $floor = 0;
+        if (count($bundle))
+        {
+            $fudge = array_values(array_reverse($bundle));
+            $floor = $fudge[0];
+        }
+        if ($floor < $min)
+        {
+            $floor = $min;
+        }
+        $value = $term_def[$item['term']];
+        for ($counter = $item['start']; $counter <= $item['stop']; $counter = $counter +
+            $item['incr'])
+        {
+            if ($value * $counter >= $floor)
+            {
+                $plural = $counter == 1 ? '' : 's';
+                $key = $value * $counter;
+                $bundle[$key] = t($counter . ' ' . $item['term'] . $plural);
+            }
+        }
+    }
+    return $bundle;
+}
+function _set_control_keys($orig = array())
+{
+    $formatted = array();
+    foreach ($orig as $item)
+    {
+        $keys = array(
+            'term',
+            'start',
+            'stop',
+            'incr');
+        $values = array_values($item);
+        $item = array_combine($keys, $values);
+        $formatted[] = $item;
+    }
+    return $formatted;
+
+}
+/**
+ * Build a Selector Drop Down for time values
+ *
+ * @param  $options
+ *
+ */
+function osg_api_time_dropdown($options = array())
+{
+    /**
+     *
+     * @options is an array of options and may include the following sub values
+     *
+     * 'control' (array)  - determins the values included in the dropdown.
+     *         Must include the first [term] element.
+     *         May also include start,stop, and modo elements
+     *           (modo behaves mostly like an increment,
+     *             but the incrementations effectively starts after the intial value)
+     *             example: array('hours',1,24,6);
+     *              yeilds an array like:
+     *                  array (
+     *                          3600 => '1 hour',
+     *                          21600 => '6 hours',
+     *                          43200 => '12 hours',
+     *                          64800 => '18 hours',
+     *                          86400 => '24 hours',
+     *                        )
+     *          Control should be itself an array of arrays, so that multiple terms can be included.
+     *          Control can be expressed as a string
+     *            using pipe (|) as a column delimiter
+     *            and semi colon(;) as a row delimiter
+     * 'cron_safe'  (boolean) - cron safe will not return values less than the minimum cron firing interval
+     *
+     * 'base' (string)     - Must be a valid term and will be the primary unit it of the return array.
+     *             example if $base='hours' is specified with the abover parameters will return
+     *                      array (
+     *                      1 => '1 hour',
+     *                      6 => '6 hours',
+     *                      12 => '12 hours',
+     *                      18 => '18 hours',
+     *                      24 => '24 hours',
+     *                    )
+     *
+     *  'zero_label' (string) - Is the first line of the drop down and allows the lable specified
+     *
+     * all of above example as an options array would look like
+     * array ( 'control' => array ( array ( 'hours', 1, 24, 6) ),
+     *         'cron_safe' => true,
+     *         'base' => 'hours'
+     *        )
+     *
+     */
+    if (is_array($options))
+    {
+        foreach ($options as $key => $value)
+        {
+            $$key = $value;
+        }
+    }
+    else
+    {
+        //Assume string value is control
+        if (is_string($options))
+        {
+            $control = $options;
+        }
+    }
+
+    if (isset($cron_safe))
+    {
+        if ((bool)$cron_safe)
+        {
+            $min = variable_get('cron_safe_threshold', 0);
+        }
+    }
+
+    if (!isset($min))
+    {
+        $min = -1;
+    }
+    if (!isset($base))
+    {
+        $base = 1;
+    }
+    $term_def = array(
+        'second' => array(
+            'mult' => 1,
+            'start' => 1,
+            'stop' => 60,
+            'modo' => 1,
+            ),
+        'minute' => array(
+            'mult' => 60,
+            'start' => 1,
+            'stop' => 60,
+            'modo' => 1,
+            ),
+        'hour' => array(
+            'mult' => 3600,
+            'start' => 1,
+            'stop' => 24,
+            'modo' => 1,
+            ),
+        'day' => array(
+            'mult' => 86400,
+            'start' => 1,
+            'stop' => 7,
+            'modo' => 1,
+            ),
+        'week' => array(
+            'mult' => 604800,
+            'start' => 1,
+            'stop' => 53,
+            'modo' => 1,
+            ),
+        );
+
+    if (!isset($control))
+    {
+        $control = array();
+        foreach ($term_def as $key => $value)
+        {
+            $element = array();
+            $element['term'] = $key;
+            $element['start'] = $value['start'];
+            $element['stop'] = $value['stop'];
+            $element['modo'] = $value['modo'];
+            $control[] = $element;
+        }
+    }
+
+    //$control can be string.  First dimension deleimited by exclamation point (!)
+    //                         Second dimesion deleimted by pipe ( | ))
+    if (!is_array($control))
+    {
+        $control = explode(';', $control);
+        foreach ($control as $key => &$value)
+        {
+            $value = explode('|', $value);
+        }
+
+    }
+
+    if (!is_array($control))
+    {
+        $control = array($control);
+    }
+
+    /* if(!is_array(current($control))){
+    $control=array($control);
+    }*/
+    //  if(!is_array(current(current($control)))){
+    //    $control = array($control);
+    //  }
+    //$control = _set_control_keys($control,$term_def);
+    //Insure $contol variable is of a useable format
+    $keys = array(
+        'term',
+        'start',
+        'stop',
+        'modo');
+    $values = array_values($term_def);
+
+    $model = array();
+
+
+    $proper = array();
+    foreach ($control as $item)
+    {
+        //Assume Control Items are in the proper order and have no keys'
+        $values = array_combine(array_slice($keys, 0, count($item)),
+            array_values($item));
+        /*Now make sure there are as many values as keys.
+        Assume further that if a partial structure was provided
+        , the proper hierachy was ovserved.
+
+        At the very least, the term must be set
+        */
+        if (isset($values['term']))
+        {
+            $values['term'] = strtolower($values['term']);
+            $plural = substr($values['term'], strlen($values['term']) - 1);
+            if ($plural == 's')
+            {
+                $values['term'] = substr($values['term'], 0, strlen($values['term']) -
+                    1);
+            }
+            if (isset($term_def[$values['term']]))
+            {
+                foreach (array_slice($keys, count($item), count($keys)) as $key)
+                {
+                    $values[$key] = $term_def[$values['term']][$key];
+                }
+                $proper[] = $values;
+            }
+        }
+    }
+    if (count($proper))
+    {
+        $control = $proper;
+    }
+    $bundle = array();
+    if (isset($zero_label))
+    {
+        $bundle[0] = $zero_label;
+    }
+
+    $floor = 0;
+    if ($floor < $min)
+    {
+        $floor = $min;
+    }
+    //debug($control,'$contol');
+    foreach ($control as $item)
+    {
+        $term = $item['term'];
+
+        $value = $term_def[$term]['mult'];
+        $starter = $item['start'];
+        while ($floor > ($starter * $value))
+        {
+            $starter = $starter + 1;
+        }
+
+        $stopper = $item['stop'];
+        //    debug(array('stoper'=>$stopper,'value'=>$value,'floor'=>$floor));
+        if ($stopper * $value >= $floor)
+        {
+
+            for ($counter = $starter; $counter <= $stopper; $counter = $counter +
+                1)
+            {
+                //debug(array('stoper'=>$stopper,'value'=>$value,'floor'=>$floor,'counter'=>$counter,'starter'=>$starter));
+                if ((($counter % $item['modo']) == 0) || ($counter == $starter))
+                {
+
+                    if (($value * $counter) >= $floor)
+                    {
+                        $plural = $counter == 1 ? '' : 's';
+                        $key = $value * $counter;
+                        $bundle[$key] = ($counter . ' ' . $term . $plural);
+                    }
+                    //debug($bundle);
+                    $floor = $counter;
+                }
+            }
+
+        }
+    }
+    $flip = array_flip($bundle);
+    asort($flip);
+    $bundle = array_flip($flip);
+    //Do the base conversion after array build (to make the math eaiser for non mathemeticians like myself)
+    if (!isset($base))
+    {
+        $base = 1;
+    }
+    if (!is_numeric($base))
+    {
+        if (isset($term_def[$base]))
+        {
+            $base = (int)$term_def[$base]['mult'];
+        }
+        else
+        {
+            if (substr($base, strlen($base) - 1) == 's')
+            {
+                $key = substr($base, 0, strlen($base) - 1);
+            }
+            if (isset($term_def[$key]))
+            {
+                $base = (int)$term_def[$key]['mult'];
+            }
+            if (!is_numeric($base))
+            {
+                $base = 1;
+            }
+        }
+    }
+    if ($base > 1)
+    {
+        $flip = array_flip($bundle);
+        foreach ($flip as $key => &$value)
+        {
+            $value = (int)floor($value / $base);
+            if ($value <= 0)
+            {
+                unset($flip[$key]);
+            }
+        }
+        $bundle = array_flip($flip);
+    }
+    if (isset($echo))
+    {
+        if ($echo == true)
+        {
+            if (is_array($options))
+            {
+                $chatter = array();
+                foreach ($options as $key => $value)
+                {
+                    $chatter[$key] = $$key;
+                }
+                debug($chatter, 'options');
+                debug($bundle);
+
+            }
+            else
+            {
+                var_export($control);
+            }
+        }
+    }
+    return $bundle;
+}
+/**
+ * osg_api_gen_guid()
+ *
+ * @param integer $format
+ *          Bitwise return format indicator
+ *          0 - bare guid, no dashes, no curley braces
+ *          1 - add dashes
+ *          2 - add curley braces
+ *          4 - lowercase
+ * @return
+ */
+function osg_api_gen_guid($format = 0)
+{
+    if (!is_numeric($format))
+    {
+        $format = 3;
+    }
+
+    mt_srand((double)microtime() * 10000); //optional for php 4.2.0 and up.
+    $charid = md5(uniqid(rand(), true));
+    $uuid = $charid;
+
+    if (($format & 1) == true)
+    {
+        $hyphen = chr(45); // " - "
+        $uuid = substr($charid, 0, 8) . $hyphen . substr($charid, 8, 4) . $hyphen .
+            substr($charid, 12, 4) . $hyphen . substr($charid, 16, 4) . $hyphen .
+            substr($charid, 20, 12);
+
+    }
+    if (($format & 2) == true)
+    {
+        //add {}
+        $uuid = chr(123) . $uuid .= chr(125);
+
+    }
+    if (($format & 4) == true)
+    {
+        //uppercase
+        $uuid = strtoupper($uuid);
+    }
+
+    return $uuid;
+}
+
+/**
+ * Build a Selector Drop Down for time values
+ *
+ * @param  $options
+ *
+ */
+function osg_api_chrono_array($options = array())
+{
+    /**
+     *
+     * @options is an array of options and may include the following sub values
+     *
+     * 'control' (array)  - determins the values included in the dropdown.
+     *         Must include the first [term] element.
+     *         May also include start,stop, and modo elements
+     *           (modo behaves mostly like an increment,
+     *             but the incrementations effectively starts after the intial value)
+     *             example: array('hours',1,24,6);
+     *              yeilds an array like:
+     *                  array (
+     *                          3600 => '1 hour',
+     *                          21600 => '6 hours',
+     *                          43200 => '12 hours',
+     *                          64800 => '18 hours',
+     *                          86400 => '24 hours',
+     *                        )
+     *          Control should be itself an array of arrays, so that multiple terms can be included.
+     *          Control can be expressed as a string
+     *            using pipe (|) as a column delimiter
+     *            and semi colon(;) as a row delimiter
+     * 'cron_safe'  (boolean) - cron safe will not return values less than the minimum cron firing interval
+     *
+     * 'base' (string)     - Must be a valid term and will be the primary unit it of the return array.
+     *             example if $base='hours' is specified with the abover parameters will return
+     *                      array (
+     *                      1 => '1 hour',
+     *                      6 => '6 hours',
+     *                      12 => '12 hours',
+     *                      18 => '18 hours',
+     *                      24 => '24 hours',
+     *                    )
+     *
+     *  'zero_label' (string) - Is the first line of the drop down and allows the lable specified
+     *
+     * all of above example as an options array would look like
+     * array ( 'control' => array ( array ( 'hours', 1, 24, 6) ),
+     *         'cron_safe' => true,
+     *         'base' => 'hours'
+     *        )
+     *
+     */
+    if (is_array($options))
+    {
+        foreach ($options as $key => $value)
+        {
+            $$key = $value;
+        }
+    }
+    else
+    {
+        //Assume string value is control
+        if (is_string($options))
+        {
+            $control = $options;
+        }
+    }
+
+    if (isset($cron_safe))
+    {
+        if ((bool)$cron_safe)
+        {
+            $min = variable_get('cron_safe_threshold', 0);
+        }
+    }
+
+    if (!isset($min))
+    {
+        $min = -1;
+    }
+    if (!isset($base))
+    {
+        $base = 1;
+    }
+    $term_def = array(
+        'second' => array(
+            'mult' => 1,
+            'start' => 1,
+            'stop' => 60,
+            'modo' => 1,
+            ),
+        'minute' => array(
+            'mult' => 60,
+            'start' => 1,
+            'stop' => 60,
+            'modo' => 1,
+            ),
+        'hour' => array(
+            'mult' => 3600,
+            'start' => 1,
+            'stop' => 24,
+            'modo' => 1,
+            ),
+        'day' => array(
+            'mult' => 86400,
+            'start' => 1,
+            'stop' => 7,
+            'modo' => 1,
+            ),
+        'week' => array(
+            'mult' => 604800,
+            'start' => 1,
+            'stop' => 53,
+            'modo' => 1,
+            ),
+        );
+
+    if (!isset($control))
+    {
+        $control = array();
+        foreach ($term_def as $key => $value)
+        {
+            $element = array();
+            $element['term'] = $key;
+            $element['start'] = $value['start'];
+            $element['stop'] = $value['stop'];
+            $element['modo'] = $value['modo'];
+            $control[] = $element;
+        }
+    }
+
+    //$control can be string.  First dimension deleimited by exclamation point (!)
+    //                         Second dimesion deleimted by pipe ( | ))
+    if (!is_array($control))
+    {
+        $control = explode(';', $control);
+        foreach ($control as $key => &$value)
+        {
+            $value = explode('|', $value);
+        }
+
+    }
+
+    if (!is_array($control))
+    {
+        $control = array($control);
+    }
+
+    /* if(!is_array(current($control))){
+    $control=array($control);
+    }*/
+    //  if(!is_array(current(current($control)))){
+    //    $control = array($control);
+    //  }
+    //$control = _set_control_keys($control,$term_def);
+    //Insure $contol variable is of a useable format
+    $keys = array(
+        'term',
+        'start',
+        'stop',
+        'modo');
+    $values = array_values($term_def);
+
+    $model = array();
+
+
+    $proper = array();
+    foreach ($control as $item)
+    {
+        //Assume Control Items are in the proper order and have no keys'
+        $values = array_combine(array_slice($keys, 0, count($item)),
+            array_values($item));
+        /*Now make sure there are as many values as keys.
+        Assume further that if a partial structure was provided
+        , the proper hierachy was ovserved.
+
+        At the very least, the term must be set
+        */
+        if (isset($values['term']))
+        {
+            $values['term'] = strtolower($values['term']);
+            $plural = substr($values['term'], strlen($values['term']) - 1);
+            if ($plural == 's')
+            {
+                $values['term'] = substr($values['term'], 0, strlen($values['term']) -
+                    1);
+            }
+            if (isset($term_def[$values['term']]))
+            {
+                foreach (array_slice($keys, count($item), count($keys)) as $key)
+                {
+                    $values[$key] = $term_def[$values['term']][$key];
+                }
+                $proper[] = $values;
+            }
+        }
+    }
+    if (count($proper))
+    {
+        $control = $proper;
+    }
+    $bundle = array();
+    if (isset($zero_label))
+    {
+        $bundle[0] = $zero_label;
+    }
+
+    $floor = 0;
+    if ($floor < $min)
+    {
+        $floor = $min;
+    }
+    //debug($control,'$contol');
+    foreach ($control as $item)
+    {
+        $term = $item['term'];
+
+        $value = $term_def[$term]['mult'];
+        $starter = $item['start'];
+        while ($floor > ($starter * $value))
+        {
+            $starter = $starter + 1;
+        }
+
+        $stopper = $item['stop'];
+        //    debug(array('stoper'=>$stopper,'value'=>$value,'floor'=>$floor));
+        if ($stopper * $value >= $floor)
+        {
+
+            for ($counter = $starter; $counter <= $stopper; $counter = $counter +
+                1)
+            {
+                //debug(array('stoper'=>$stopper,'value'=>$value,'floor'=>$floor,'counter'=>$counter,'starter'=>$starter));
+                if ((($counter % $item['modo']) == 0) || ($counter == $starter))
+                {
+
+                    if (($value * $counter) >= $floor)
+                    {
+                        $plural = $counter == 1 ? '' : 's';
+                        $key = $value * $counter;
+                        $bundle[$key] = ($counter . ' ' . $term . $plural);
+                    }
+                    //debug($bundle);
+                    $floor = $counter;
+                }
+            }
+
+        }
+    }
+    $flip = array_flip($bundle);
+    asort($flip);
+    $bundle = array_flip($flip);
+    //Do the base conversion after array build (to make the math eaiser for non mathemeticians like myself)
+    if (!isset($base))
+    {
+        $base = 1;
+    }
+    if (!is_numeric($base))
+    {
+        if (isset($term_def[$base]))
+        {
+            $base = (int)$term_def[$base]['mult'];
+        }
+        else
+        {
+            if (substr($base, strlen($base) - 1) == 's')
+            {
+                $key = substr($base, 0, strlen($base) - 1);
+            }
+            if (isset($term_def[$key]))
+            {
+                $base = (int)$term_def[$key]['mult'];
+            }
+            if (!is_numeric($base))
+            {
+                $base = 1;
+            }
+        }
+    }
+    if ($base > 1)
+    {
+        $flip = array_flip($bundle);
+        foreach ($flip as $key => &$value)
+        {
+            $value = (int)floor($value / $base);
+            if ($value <= 0)
+            {
+                unset($flip[$key]);
+            }
+        }
+        $bundle = array_flip($flip);
+    }
+    if (isset($echo))
+    {
+        if ($echo == true)
+        {
+            if (is_array($options))
+            {
+                $chatter = array();
+                foreach ($options as $key => $value)
+                {
+                    $chatter[$key] = $$key;
+                }
+                debug($chatter, 'options');
+                debug($bundle);
+
+            }
+            else
+            {
+                var_export($control);
+            }
+        }
+    }
+    return $bundle;
+}
+function osg_api_misc_variables_form($form, &$form_state)
+{
+    global $base_url;
+    $default = variable_get('osg_stuff_pic_path');
+    if (!$default)
+    {
+        $default = 'sites/default/files/pictures';
+        if (!is_dir($base_url . '/' . $default))
+        {
+            $default = 'sites/default/files';
+        }
+    }
+    $form['configuration']['osg_stuff_pic_path'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Default Image Path'),
+        // '#description'  => t('Sellect cellular carrier.'),
+        '#default_value' => $default,
+        );
+    return system_settings_form($form);
+}
+/**
+ * recursively create a long directory path
+ */
+function osg_api_createPath($path)
+{
+    $parts = explode('/', $path);
+    $test_path = "";
+    $sep = "";
+    foreach ($parts as $frag)
+    {
+        $test_path = $test_path . $sep . $frag;
+
+        if (!is_dir($test_path))
+        {
+            drupal_mkdir($test_path);
+            debug($test_path);
+
+        }
+        $sep = "/";
+    }
+
+}
+/**
+ * Create a random string
+ *
+ */
+function osg_api_random_string($size = null, $prepend_timestamp = false)
+{
+    if (empty($size))
+    {
+        $size = 32;
+    }
+    $pool = "0123456789abcdefghijklmnopqrstuvwxyz";
+    $val = "";
+    $l = strlen($pool);
+    for ($i = 0; $i < $size; $i++)
+    {
+        $j = rand(1, $l);
+        $val = $val . substr($pool, $j, 1);
+    }
+    if ($prepend_timestamp)
+    {
+        $val = dechex(time()) . '-' . $val;
+    }
+    return $val;
+}
+function osg_api_format_phone_number($mynum, $mask)
+{
+    /*********************************************************************/
+    /*   Purpose: Return either masked phone number or false             */
+    /*     Masks: Val=1 or xxx xxx xxxx                                             */
+    /*            Val=2 or xxx xxx.xxxx                                             */
+    /*            Val=3 or xxx.xxx.xxxx                                             */
+    /*            Val=4 or (xxx) xxx xxxx                                           */
+    /*            Val=5 or (xxx) xxx.xxxx                                           */
+    /*            Val=6 or (xxx).xxx.xxxx                                           */
+    /*            Val=7 or (xxx) xxx-xxxx                                           */
+    /*            Val=8 or (xxx)-xxx-xxxx                                           */
+    /*********************************************************************/
+    $val_num = ($mynum);
+    if (!$val_num && !is_string($mynum))
+    {
+        echo "Number $mynum is not a valid phone number! \n";
+        return false;
+    } // end if !$val_num
+    if (($mask == 1) || ($mask == 'xxx xxx xxxx'))
+    {
+        $phone = preg_replace('~.*(\d{3})[^\d]*(\d{3})[^\d]*(\d{4}).*~',
+            '$1 $2 $3' . " \n", $mynum);
+        return $phone;
+    } // end if $mask == 1
+    if (($mask == 2) || ($mask == 'xxx xxx.xxxx'))
+    {
+        $phone = preg_replace('~.*(\d{3})[^\d]*(\d{3})[^\d]*(\d{4}).*~',
+            '$1 $2.$3' . " \n", $mynum);
+        return $phone;
+    } // end if $mask == 2
+    if (($mask == 3) || ($mask == 'xxx.xxx.xxxx'))
+    {
+        $phone = preg_replace('~.*(\d{3})[^\d]*(\d{3})[^\d]*(\d{4}).*~',
+            '$1.$2.$3' . " \n", $mynum);
+        return $phone;
+    } // end if $mask == 3
+    if (($mask == 4) || ($mask == '(xxx) xxx xxxx'))
+    {
+        $phone = preg_replace('~.*(\d{3})[^\d]*(\d{3})[^\d]*(\d{4}).*~',
+            '($1) $2 $3' . " \n", $mynum);
+        return $phone;
+    } // end if $mask == 4
+    if (($mask == 5) || ($mask == '(xxx) xxx.xxxx'))
+    {
+        $phone = preg_replace('~.*(\d{3})[^\d]*(\d{3})[^\d]*(\d{4}).*~',
+            '($1) $2.$3' . " \n", $mynum);
+        return $phone;
+    } // end if $mask == 5
+    if (($mask == 6) || ($mask == '(xxx).xxx.xxxx'))
+    {
+        $phone = preg_replace('~.*(\d{3})[^\d]*(\d{3})[^\d]*(\d{4}).*~',
+            '($1).$2.$3' . " \n", $mynum);
+        return $phone;
+    } // end if $mask == 6
+    if (($mask == 7) || ($mask == '(xxx) xxx-xxxx'))
+    {
+        $phone = preg_replace('~.*(\d{3})[^\d]*(\d{3})[^\d]*(\d{4}).*~',
+            '($1) $2-$3' . " \n", $mynum);
+        return $phone;
+    } // end if $mask == 7
+    if (($mask == 8) || ($mask == '(xxx)-xxx-xxxx'))
+    {
+        $phone = preg_replace('~.*(\d{3})[^\d]*(\d{3})[^\d]*(\d{4}).*~',
+            '($1)-$2-$3' . " \n", $mynum);
+
+        return $phone;
+    } // end if $mask == 8
+    return false; // Returns false if no conditions meet or input
+} // end function format_phone_number
+
+/**
+ *
+ * Check on the age of the session and reset it if $timeout has expired
+ *
+ * This Procude looks for values stored under the $_SESSION['osg'] structure
+ *   Intended structure is $_SESSION['osg']['module_key']['subkey'][...]
+ *
+ *   The Default session start time will be kept at $_SESSION['osg']['#startup']
+ *   This function will always set $_SESSION['osg']['#age'] upon entry
+ *
+ * @param int $timeout
+ * @param string $secondary_key
+ * @param string $tertiary_key
+ *
+ * @return TRUE if session is still valid, FALSE if session was reset or keys did not exist
+ */
+
+function osg_api_prove_session($params = array())
+{
+    $model = array(
+        'timeout' => 600,
+        'secondary_key' => null,
+        'tertiary_key' => null,
+        );
+
+    foreach ($model as $key => $value)
+    {
+        if (empty($params[$key]))
+        {
+            $params[$key] = &$value;
+        }
+    }
+    extract($params);
+
+    if (empty($_SESSION['osg']['#startup']))
+    {
+        $_SESSION['osg']['#startup'] = time();
+    }
+    if (!empty($_SESSION['osg'][$secondary_key][$tertiary_key]))
+    {
+        $target = &$_SESSION['osg'][$secondary_key][$tertiary_key];
+    }
+    if (empty($target))
+    {
+        if (!empty($_SESSION['osg'][$secondary_key]))
+        {
+
+            $target = &$_SESSION['osg'][$secondary_key];
+        }
+    }
+    if (empty($target))
+    {
+        $target = &$_SESSION['osg'];
+    }
+
+
+    $target['#age'] = time() - $_SESSION['osg']['#startup'];
+
+    if ($_SESSION['osg']['#age'] >= $timeout)
+    {
+        $target = null;
+    }
+
+
+    /*if (empty($target['#dbug'])) {
+    new dbug($target);
+    $target['#dbug'] = time();
+    }
+    else
+    {
+    if (time() - $target['#dbug'] > 120) {
+    unset($target['#dbug']);
+    }
+    }*/
+
+    return isset($target);
+
+}
+
+function osg_api_get_managed_file($uri, $options = array('save_unmanaged' => false))
+{
+    $fid = db_query('SELECT fid FROM {file_managed} WHERE uri = :uri', array(':uri' =>
+            $uri))->fetchField();
+    if (!empty($fid))
+    {
+        $file_object = file_load($fid);
+        return $file_object;
+    }
+    else
+    {
+        if (!array_key_exists('save_unmanaged', $options))
+        {
+            $options['save_unmanaged'] = false;
+        }
+        if ((bool)$options['save_unmanaged'])
+        {
+            if (file_exists($uri))
+            {
+                $content = file_get_contents($uri);
+                $file_object = file_save_data($content, $uri,
+                    FILE_EXISTS_REPLACE);
+                return $file_object;
+            }
+        }
+    }
+    return false;
+}

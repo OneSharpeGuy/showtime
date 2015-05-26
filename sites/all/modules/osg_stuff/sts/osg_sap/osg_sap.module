@@ -1,0 +1,215 @@
+<?php
+
+/**
+* @file osg_sap.module
+* TODO: Enter file description here.
+*/
+
+/**
+* Implements hook_help()..
+*/
+function osg_sap_help($path, $arg)
+{
+    switch ($path) {
+        // Main module help for the block module
+        case 'admin/help#block':
+        return '<p>' . t('Blocks are boxes of content rendered into an area, or region, of a web page. The default theme Bartik, for example, implements the regions "Sidebar first", "Sidebar second", "Featured", "Content", "Header", "Footer", etc., and a block may appear in any one of these areas. The <a href="@blocks">blocks administration page</a> provides a drag-and-drop interface for assigning a block to a region, and for controlling the order of blocks within regions.', array('@blocks'=> url('admin/structure/block'))) . '</p>';
+
+        // Help for another path in the block module
+        case 'admin/structure/block':
+        return '<p>' . t('This page provides a drag-and-drop interface for assigning a block to a region, and for controlling the order of blocks within regions. Since not all themes implement the same regions, or display regions in the same way, blocks are positioned on a per-theme basis. Remember that your changes will not be saved until you click the <em>Save blocks</em> button at the bottom of the page.') . '</p>';
+    }
+}
+
+/**
+* Implements hook_menu()..
+*/
+function osg_sap_menu()
+{
+    $items = array();
+
+    $items['user/attendance'] = array(
+        'title'          => 'Attendance Plan',
+        'page callback'  => 'osg_sap_attendance_plan',
+        'access callback'=> 'osg_sap_is_member',
+        'type'           => MENU_SUGGESTED_ITEM,
+    );
+    $items['user/%user/attendance'] = array(
+        'title'           => 'Attendance Plan',
+        'type'            => MENU_LOCAL_TASK,
+        'page callback'   => 'osg_sap_attendance_plan',
+        'page arguments'    =>array(1),
+        'access callback' => 'osg_sap_is_member',
+        'access arguments' => array(1),
+        'weight'          =>100,
+    );
+
+    return $items;
+}
+function osg_sap_is_member($user = FALSE)
+{
+    $member = false;
+
+    if ( !($user)) {
+        $user = $GLOBALS['user'];
+    }
+    if (in_array('member',$user->roles)) {
+        $member = TRUE;
+    }
+    return $member;
+}
+function osg_sap_attendance_plan_prep()
+{
+    global $user;
+    osg_sap_attendance_plan($user);
+}
+function osg_sap_attendance_plan($local_user = FALSE)
+{
+    /*
+    SELECT n.nid,n.title,r.state,w.field_when_value
+    FROM node n
+    INNER JOIN field_data_field_when w ON n.nid=w.entity_id AND w.entity_type='node'
+    LEFT JOIN registration r ON n.nid = r.entity_id AND r.entity_type='node' AND user_uid=696
+    WHERE n.`type`='singout' AND n.`status`=1
+    */
+    global $user;
+    $title = "";
+    if ($local_user == FALSE) {
+        $local_user = $user;
+    }
+	//debug(osg_api_GetCallingMethodName(2));
+    if (osg_api_GetCallingMethodName(2) <> "osg_sap_block_view") {
+        if ($user <> $local_user) {
+            $title = "<h3>Attendance Plan for ".osg_sap_display_name($local_user)."</h3>";
+        }
+    }
+    $query = db_select('node','n');
+    $query->join('field_data_field_when','w',"n.nid=w.entity_id AND w.entity_type='node'");
+    //$query->join('field_data_field_available','a',"n.nid = a.entity_id AND a.entity_type = 'node'");
+    $query->join('osg_ical_imported','a','a.nid=n.nid');
+    $query->leftJoin('registration','r',"n.nid = r.entity_id AND r.entity_type='node' AND user_uid=:uid", array(':uid'=> $local_user->uid));
+    $query->leftJoin('registration_state','s','r.state=s.name');
+    $query->condition('n.type','singout');
+    $query->condition('a.available',1);
+    $query->addField('w','field_when_value','date');
+    $query->fields('n',array('nid','title'));
+    $query->fields('s',array('label'));
+    $query->orderBy('date');
+    $query->orderBy('nid');
+
+    $result = $query->execute();
+
+    $heading= array();
+    $columns = array();
+
+    $header = array('Date','Title','Status');
+
+    $rows[] = $columns;
+    while ($record = $result->fetchAssoc()) {
+
+
+        $columns[] = date('D M jS',$record['date']);
+        $columns[] = osg_sap_node_link($record['nid'],$record['title']);
+        if (!is_null($record['label'])) {
+            $value = $record['label'];
+        }else {
+            if ($user->uid == $local_user->uid) {
+                $value = osg_sap_button($record['nid']);
+            }
+            else {
+                $value = "Not Registered";
+            }
+
+        }
+        $columns[] = $value;
+        $rows[] = $columns;
+        $columns = array();
+
+    }
+
+    $data = array(
+        'header'=>$header,
+        'rows'  => $rows,
+    );
+
+    //$output = theme('table',$data);
+    return  $title.theme('table',$data);
+}
+function osg_sap_node_link($nid,$text)
+{
+    $anchor = array(
+        'open' =>'<span class="osg-sap-node-link"><a href="'.url('node/'.$nid).'">',
+        'close'=>'</a></span>',
+    );
+    return $anchor['open'].$text.$anchor['close'];
+
+}
+function osg_sap_button($nid)
+{
+    $button = "<button onclick=\"location.href='/node/$nid/register'\">Register</button>";
+    return $button;
+}
+
+
+/**
+* Implements hook_block_info()..
+*/
+function osg_sap_block_info()
+{
+    // This example comes from node.module.
+    $blocks['attendance-plan'] = array(
+        'info' => t('Attendance Plan'),
+        'cache'=> DRUPAL_NO_CACHE
+    );
+
+    return $blocks;
+}
+
+/**
+* Implements hook_block_view()..
+*/
+function osg_sap_block_view($delta = '')
+{
+    // This example is adapted from node.module.
+    $block = array();
+
+    switch ($delta) {
+        case 'attendance-plan':
+        $block['subject'] = t('Attendance Plan for '.osg_sap_display_name());
+        $block['content'] = osg_sap_attendance_plan();
+        break;
+
+    }
+    return $block;
+}
+function osg_sap_display_name( $local_user = FALSE)
+{
+
+    if ( !is_object($local_user)) {
+        global $user;
+        $local_user = user_load($user->uid);
+
+    }
+    //debug($local_user);
+    $display_name = $local_user->name;
+    $first_name   = "";
+
+    if (isset($local_user->field_firstname)) {
+        if (isset($local_user->field_firstname['und'])) {
+            if (isset($local_user->field_firstname['und'][0])) {
+                if (isset($local_user->field_firstname['und'][0]['value'])) {
+                    if (isset($local_user->field_lastname)) {
+                        if (isset($local_user->field_lastname['und'])) {
+                            if (isset($local_user->field_lastname['und'][0])) {
+                                if (isset($local_user->field_lastname['und'][0]['value'])) {
+                                    $display_name = $local_user->field_firstname['und'][0]['value'].' '.$local_user->field_lastname['und'][0]['value'];
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return $display_name;
+}

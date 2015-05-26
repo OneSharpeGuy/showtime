@@ -1,0 +1,7 @@
+name = Thumbs Up/Down
+description = Vote Up or Down on node using Polldaddy Nero Widget.
+core = 7.x
+package = Chuck Sharpe - Custom Mods
+
+; NEW LINE
+configure = admin/config/services/thumbs_up_down
